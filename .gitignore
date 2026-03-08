@@ -101,6 +101,6 @@ Config/DefaultEditorPerProjectUserSettings.ini
 Config/*
 Content/*
 docs/*
-Platform/*
+Platforms/*
 Source/*
 NightSkyEngine.uproject
