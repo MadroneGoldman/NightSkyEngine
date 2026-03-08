@@ -97,3 +97,11 @@ NightSkyEngine.uproject.DotSettings.user
 Config/DefaultEditorPerProjectUserSettings.ini
 *.rar
 *.zip
+
+# Non-plugin stuff
+Config/*
+Content/*
+docs/*
+Platform/*
+Source/*
+NightSkyEngine.uproject
