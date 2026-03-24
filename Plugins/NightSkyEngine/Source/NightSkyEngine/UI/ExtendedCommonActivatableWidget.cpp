@@ -49,7 +49,7 @@ void UExtendedCommonActivatableWidget::NativeDestruct()
 	Super::NativeDestruct();
 }
 
-void UExtendedCommonActivatableWidget::RegisterBinding(FDataTableRowHandle InputAction, const FInputActionExecutedDelegate& Callback, FInputActionBindingHandle& BindingHandle)
+void UExtendedCommonActivatableWidget::RegisterBinding(FDataTableRowHandle InputAction, const FInputActionExecutedDelegate& Callback, FInputActionBindingHandleNSE& BindingHandle)
 {
 	FBindUIActionArgs BindArgs(InputAction, FSimpleDelegate::CreateLambda([InputAction, Callback]()
 	{
@@ -61,7 +61,7 @@ void UExtendedCommonActivatableWidget::RegisterBinding(FDataTableRowHandle Input
 	BindingHandles.Add(BindingHandle.Handle);
 }
 
-void UExtendedCommonActivatableWidget::UnregisterBinding(FInputActionBindingHandle BindingHandle)
+void UExtendedCommonActivatableWidget::UnregisterBinding(FInputActionBindingHandleNSE BindingHandle)
 {
 	if (BindingHandle.Handle.IsValid())
 	{
