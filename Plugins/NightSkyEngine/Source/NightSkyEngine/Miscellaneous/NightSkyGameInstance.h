@@ -26,6 +26,10 @@ struct FBattleData
 	
 	UPROPERTY(EditAnywhere)
 	bool bIsValid = false;
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category="NickTourOnly")
+	TSoftObjectPtr<UPrimaryCharaData> P1Assist;
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category="NickTourOnly")
+	TSoftObjectPtr<UPrimaryCharaData> P2Assist;
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	TArray<TSoftObjectPtr<UPrimaryCharaData>> PlayerListP1;
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
