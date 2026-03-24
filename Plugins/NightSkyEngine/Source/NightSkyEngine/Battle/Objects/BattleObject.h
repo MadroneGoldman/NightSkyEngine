@@ -209,6 +209,14 @@ enum EHitAction
 	HACT_Custom UMETA(DisplayName="Custom"),
 };
 
+UENUM()
+enum ESpecialHitAction
+{
+	HACTS_None UMETA(DisplayName="None"),
+	HACTS_Fire UMETA(DisplayName="Fire"),
+	HACTS_Water UMETA(DisplayName="Water"),
+};
+
 // Used with the Floating Crumple hit action.
 UENUM(BlueprintType)
 enum EFloatingCrumpleType
@@ -455,6 +463,9 @@ struct FHitData
 	// Air hit action.
 	UPROPERTY(BlueprintReadWrite)
 	TEnumAsByte<EHitAction> AirHitAction = HACT_AirNormal;
+	//Special hit action
+	UPROPERTY(BlueprintReadWrite)
+	TEnumAsByte<ESpecialHitAction> SpecialHitAction = HACTS_None;
 	// Custom hit action.
 	UPROPERTY(BlueprintReadWrite)
 	FGameplayTag CustomHitAction;
@@ -944,6 +955,7 @@ public:
 
 	int32 ObjectStateIndex = 0;
 	bool bIsCommonState = false;
+	bool bIsNeutral = false;
 
 	// Anything past here isn't saved or loaded for rollback, unless it has the SaveGame tag.
 	unsigned char ObjSyncEnd = 0;
@@ -1274,6 +1286,7 @@ public:
 
 	int32 ObjectStateIndex = 0;
 	bool bIsCommonState = false;
+	bool bIsNeutral = false;
 
 	// Anything past here isn't saved or loaded for rollback, unless it has the SaveGame tag.
 	unsigned char ObjSyncEnd = 0;
@@ -1483,6 +1496,8 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void SetHitOTG(bool Enable);
 	UFUNCTION(BlueprintCallable)
+	void SetHitCustomCollision(bool Enable);
+	UFUNCTION(BlueprintCallable)
 	void SetIgnorePushbackScaling(bool Ignore);
 	UFUNCTION(BlueprintCallable)
 	void SetIgnoreHitstunScaling(bool Ignore);
@@ -1565,7 +1580,7 @@ public:
 	//creates object
 	UFUNCTION(BlueprintCallable)
 	ABattleObject* AddBattleObject(FGameplayTag InStateName, int32 PosXOffset = 0, int32 PosYOffset = 0,
-	                               EPosType PosType = POS_Player);
+	                               EPosType PosType = POS_Player, bool bIsNeutral_ = false);
 	//if object goes beyond screen bounds, deactivate
 	UFUNCTION(BlueprintCallable)
 	void EnableDeactivateIfBeyondBounds(bool Enable);
@@ -1591,7 +1606,6 @@ public:
 	void UseGauge(int32 GaugeIndex, int32 Value);
 
 	// Handles custom collision. Activates before clash or hit collision.
-	UFUNCTION(BlueprintImplementableEvent)
 	void HandleCustomCollision_PreHit(ABattleObject* OtherObj);
 	// Handles custom collision. Activates after clash and hit collision.
 	UFUNCTION(BlueprintImplementableEvent)

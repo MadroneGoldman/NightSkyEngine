@@ -32,7 +32,7 @@ protected:
 	virtual void BeginPlay() override;
 	
 public:
-	void Init(APlayerObject* P1, APlayerObject* P2);
+	void Init(APlayerObject* P1, APlayerObject* P2, APlayerObject* P1_TagTeammate = nullptr, APlayerObject* P1_AssistTeammate = nullptr, TArray<APlayerObject*> P2Allies = {});
 	
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;

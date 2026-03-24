@@ -807,6 +807,69 @@ void ABattleObject::HandleHitCollision(ABattleObject* AttackedObj)
 	}
 }
 
+void ABattleObject::HandleCustomCollision_PreHit(ABattleObject* OtherObj)
+{
+	if (!(AttackFlags & ATK_CustomCollision)){return;}
+	
+	if (AttackFlags & ATK_IsAttacking && AttackFlags & ATK_HitActive /* && OtherObj->Player->PlayerIndex != Player->
+		PlayerIndex*/
+		&& OtherObj->AttackFlags & ATK_HitActive)
+	{
+		if (CheckBoxOverlap(OtherObj, BOX_Custom, FGameplayTag::EmptyTag, BOX_Custom, FGameplayTag::EmptyTag))
+		{
+			//TODO:: clean up some of the repeated code in these
+			if (IsPlayer && OtherObj->IsPlayer)
+			{
+				Hitstop = 16;
+				OtherObj->Hitstop = 16;
+				AttackFlags &= ~ATK_HitActive;
+				OtherObj->AttackFlags &= ~ATK_HitActive;
+				Player->EnableAttacks();
+				Player->EnableCancelIntoSelf(true);
+				Player->EnableState(ENB_ForwardDash, StateMachine_Primary);
+				OtherObj->Player->EnableAttacks();
+				OtherObj->Player->EnableCancelIntoSelf(true);
+				OtherObj->Player->EnableState(ENB_ForwardDash, StateMachine_Primary);
+				const FHitData Data = InitHitDataByAttackLevel(false);
+				OtherObj->ReceivedHitCommon = HitCommon;
+				OtherObj->ReceivedHit = Data;
+				TriggerEvent(EVT_HitOrBlock, StateMachine_Primary);
+				OtherObj->TriggerEvent(EVT_HitOrBlock, StateMachine_Primary);
+				CreateCommonParticle(Particle_Hit_Clash, POS_Col, FVector(0, 0, 0));
+				PlayCommonSound(Sound_Hit_Clash);
+			}
+			else if (!IsPlayer && !OtherObj->IsPlayer)
+			{
+				OtherObj->Hitstop = 16;
+				Hitstop = 16;
+				AttackFlags &= ~ATK_HitActive;
+				OtherObj->AttackFlags &= ~ATK_HitActive;
+				const FHitData Data = InitHitDataByAttackLevel(false);
+				OtherObj->ReceivedHitCommon = HitCommon;
+				OtherObj->ReceivedHit = Data;
+				TriggerEvent(EVT_HitOrBlock, StateMachine_Primary);
+				OtherObj->TriggerEvent(EVT_HitOrBlock, StateMachine_Primary);
+				CreateCommonParticle(Particle_Hit_Clash, POS_Col, FVector(0, 0, 0));
+				PlayCommonSound(Sound_Hit_Clash);
+			}
+			else if (IsPlayer && !OtherObj->IsPlayer)
+			{
+				OtherObj->Hitstop = 16;
+				Hitstop = 16;
+				AttackFlags &= ~ATK_HitActive;
+				OtherObj->AttackFlags &= ~ATK_HitActive;
+				const FHitData Data = InitHitDataByAttackLevel(false);
+				OtherObj->ReceivedHitCommon = HitCommon;
+				OtherObj->ReceivedHit = Data;
+				TriggerEvent(EVT_HitOrBlock, StateMachine_Primary);
+				OtherObj->TriggerEvent(EVT_HitOrBlock, StateMachine_Primary);
+				CreateCommonParticle(Particle_Hit_Clash, POS_Col, FVector(0, 0, 0));
+				PlayCommonSound(Sound_Hit_Clash);
+			}
+		}
+	}
+}
+
 FHitData ABattleObject::InitHitDataByAttackLevel(bool IsCounter)
 {
 	if (HitCommon.AttackLevel < 0)
@@ -1870,6 +1933,11 @@ void ABattleObject::UpdateVisualsNoRollback()
 				MIDynamic->SetScalarParameterValue(FName(TEXT("OrthoBlendActive")), OrthoBlendActive);
 				MIDynamic->SetVectorParameterValue(FName(TEXT("DamageColor")), DamageColor);
 				MIDynamic->SetVectorParameterValue(FName(TEXT("DamageColor2")), DamageColor2);
+
+				//TODO:: have this on normal materials not overlay
+				MIDynamic->SetVectorParameterValue(FName(TEXT("AddColor")), AddColor);
+				MIDynamic->SetVectorParameterValue(FName(TEXT("MulColor")), MulColor);
+				//
 			}
 		}
 	}
@@ -2259,9 +2327,9 @@ void ABattleObject::ResetObject()
 	SocketObj = OBJ_Self;
 	SocketOffset = FVector::ZeroVector;
 	AddColor = FLinearColor(0, 0, 0, 1);
-	MulColor = FLinearColor(1, 1, 1, 1);
+	MulColor = FLinearColor(0, 0, 0, 1);
 	AddFadeColor = FLinearColor(0, 0, 0, 1);
-	MulFadeColor = FLinearColor(1, 1, 1, 1);
+	MulFadeColor = FLinearColor(0, 0, 0, 1);
 	AddFadeSpeed = 0;
 	MulFadeSpeed = 0;
 	Transparency = 1;
@@ -2726,6 +2794,15 @@ void ABattleObject::SetHitOTG(bool Enable)
 		AttackFlags &= ~ATK_HitOTG;
 }
 
+void ABattleObject::SetHitCustomCollision(bool Enable)
+{
+	if (Enable)
+		AttackFlags |= ATK_CustomCollision;
+	else
+		AttackFlags &= ~ATK_CustomCollision;
+
+}
+
 void ABattleObject::SetIgnorePushbackScaling(bool Ignore)
 {
 	if (Ignore)
@@ -2837,8 +2914,9 @@ bool ABattleObject::CheckBoxOverlap(ABattleObject* OtherObj, const EBoxType Self
 	{
 		if (Box.Type != SelfType)
 			continue;
-		if (Box.Type == BOX_Custom && Box.CustomType != SelfCustomType)
-			continue;
+		//Madrone change commented below out should replace with custom hitbox hurtbox checks
+		//if (Box.Type == BOX_Custom && Box.CustomType != SelfCustomType)
+		//	continue;
 
 		// Calculate vertices
 		int32 P1[2] = {-Box.SizeX / 2, -Box.SizeY / 2};
@@ -2900,8 +2978,11 @@ bool ABattleObject::CheckBoxOverlap(ABattleObject* OtherObj, const EBoxType Self
 		{
 			if (OtherBox.Type != OtherType)
 				continue;
-			if (OtherBox.Type == BOX_Custom && OtherBox.CustomType != OtherCustomType)
+			if (OtherBox.Type == BOX_Custom && OtherBox.CustomType != Box.CustomType)
 				continue;
+			//Madrone change  Box.CustomType
+			//if (OtherBox.Type == BOX_Custom && OtherBox.CustomType != OtherCustomType)
+			//	continue;
 
 			int32 OtherP1[2] = {-OtherBox.SizeX / 2, -OtherBox.SizeY / 2};
 			int32 OtherP2[2] = {-OtherBox.SizeX / 2, OtherBox.SizeY / 2};
@@ -3516,7 +3597,7 @@ ABattleObject* ABattleObject::AddCommonBattleObject(FGameplayTag InStateName, in
 }
 
 ABattleObject* ABattleObject::AddBattleObject(FGameplayTag InStateName, int32 PosXOffset, int32 PosYOffset,
-                                              EPosType PosType)
+                                              EPosType PosType, bool bIsNeutral_)
 {
 	if (!GameState) return nullptr;
 	const int StateIndex = Player->ObjectStateNames.Find(InStateName);
@@ -3529,7 +3610,7 @@ ABattleObject* ABattleObject::AddBattleObject(FGameplayTag InStateName, int32 Po
 		FinalPosX += PosXOffset;
 		FinalPosY += PosYOffset;
 		return GameState->AddBattleObject(Player->ObjectStates[StateIndex],
-		                                  FinalPosX, FinalPosY, Direction, StateIndex, false, Player);
+		                                  FinalPosX, FinalPosY, Direction, StateIndex, false, Player, bIsNeutral_);
 	}
 	return nullptr;
 }

@@ -10,6 +10,8 @@
 #include "NightSkyEngine/Data/ParticleData.h"
 #include "NightSkyEngine/Data/SubroutineData.h"
 #include "NightSkyEngine/Miscellaneous/NightSkyGameInstance.h"
+#include "NightSkyEngine/UI/NightSkyBattleHudActor.h"
+#include "NightSkyEngine/UI/NightSkyBattleWidget.h"
 #include "Serialization/ObjectReader.h"
 #include "Serialization/ObjectWriter.h"
 
@@ -426,6 +428,10 @@ void APlayerObject::Update()
 {
 	if ((PlayerFlags & PLF_IsOnScreen) == 0)
 	{
+		if ((PlayerFlags & PLF_IsDead) == 0)
+		{
+			RecoverHealth(RecoverableHealthRecoverySpeed);
+		}
 		return;
 	}
 
@@ -921,6 +927,9 @@ void APlayerObject::HandleHitAction(EHitAction HACT)
 		FinalDamage = FinalDamage * OtgProration / 100;
 
 	CurrentHealth -= FinalDamage;
+
+	GameState->BattleHudActor->TopWidget->PlayTookDamageAnim(!TeamIndex);
+
 	if (CurrentHealth > 0)
 	{
 		if (IsMainPlayer())
@@ -2104,6 +2113,10 @@ bool APlayerObject::HandleStateCondition(EStateCondition StateCondition) const
 		if (GameState->BattleState.Meter[PlayerIndex] >= 50000)
 			return true;
 		break;
+	case EStateCondition::RecoverableHealthNotZero:
+		if (RecoverableHealth > 0)
+			return true;
+		break;
 	case EStateCondition::PlayerReg1True:
 		return PlayerReg1 != 0;
 	case EStateCondition::PlayerReg2True:
@@ -3048,9 +3061,9 @@ void APlayerObject::RoundInit(bool ResetHealth)
 	SocketOffset = FVector::ZeroVector;
 	ObjectScale = FVector::OneVector;
 	AddColor = FLinearColor(0, 0, 0, 1);
-	MulColor = FLinearColor(1, 1, 1, 1);
+	MulColor = FLinearColor(0, 0, 0, 1);
 	AddFadeColor = FLinearColor(0, 0, 0, 1);
-	MulFadeColor = FLinearColor(1, 1, 1, 1);
+	MulFadeColor = FLinearColor(0, 0, 0, 1);
 	AddFadeSpeed = 0;
 	MulFadeSpeed = 0;
 	Transparency = 1;

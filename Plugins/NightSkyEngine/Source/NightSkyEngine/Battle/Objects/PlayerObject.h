@@ -148,6 +148,8 @@ struct FPlayerObjectLog : public FBattleObjectLog
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Defaults)
 	int32 CloseNormalRange;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Defaults)
+	int32 RecoverableHealthRecoverySpeed = 1 ;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Defaults)
 	int32 MaxHealth;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Defaults)
 	int32 MaxMeter = 10000;
@@ -412,6 +414,8 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Defaults)
 	int32 CloseNormalRange;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Defaults)
+	int32 RecoverableHealthRecoverySpeed = 1 ;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Defaults)
 	int32 MaxHealth;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Defaults)
 	int32 MaxMeter = 10000;
@@ -581,6 +585,9 @@ protected:
 public:
 	// Anything past here isn't saved or loaded for rollback, unless it has the SaveGame tag.
 	unsigned char PlayerSyncEnd;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	FText CharacterName;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	bool bIsCpu = false;
