@@ -157,6 +157,41 @@ void ANightSkyGameState::Init()
 			SpawnedPlayer->bIsCpu = true;
 		}
 	}
+	
+	//NickTour Assists
+	{
+		auto P1AssistData = GameInstance->BattleData.P1Assist.LoadSynchronous();
+		auto P2AssistData = GameInstance->BattleData.P2Assist.LoadSynchronous();
+		
+		if (P1AssistData != nullptr &&  P1AssistData->PlayerClass != nullptr)
+		{
+			APlayerObject* NewP1Assist = GetWorld()->SpawnActor<APlayerObject>(P1AssistData->PlayerClass); 
+			NewP1Assist->CharacterName = P1AssistData->CharaFriendlyName; 
+			NewP1Assist->SetActorHiddenInGame(true);
+		
+			P1Assist = NewP1Assist;
+			NewP1Assist->SetActorTransform(BattleSceneTransform);
+			SortedObjects.Add(NewP1Assist);
+			NewP1Assist->InitPlayer();
+			NewP1Assist->GameState = this;
+			NewP1Assist->AddTickPrerequisiteActor(this);
+		}
+		if (P2AssistData != nullptr &&  P2AssistData->PlayerClass != nullptr)
+		{
+			APlayerObject* NewP2Assist = GetWorld()->SpawnActor<APlayerObject>(P2AssistData->PlayerClass); 
+			NewP2Assist->CharacterName = P2AssistData->CharaFriendlyName; 
+			NewP2Assist->SetActorHiddenInGame(true);
+		
+			P1Assist = NewP2Assist;
+			NewP2Assist->SetActorTransform(BattleSceneTransform);
+			SortedObjects.Add(NewP2Assist);
+			NewP2Assist->InitPlayer();
+			NewP2Assist->GameState = this;
+			NewP2Assist->AddTickPrerequisiteActor(this);
+		}
+		
+		
+	}
 
 	for (int i = 0; i < MaxBattleObjects; i++)
 	{
