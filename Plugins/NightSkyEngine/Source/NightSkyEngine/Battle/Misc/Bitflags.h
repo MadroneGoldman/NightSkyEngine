@@ -160,6 +160,10 @@ enum EAttackFlags
 	 * Flag sets if object can hit opponents during knockdown.
 	 */
 	ATK_HitOTG = 0x400 UMETA(DisplayName = "Hit OTG"),
+	/**
+	 * Flag sets if object can hit custom collision boxes.
+	 */
+	ATK_CustomCollision = 0x800 UMETA(DisplayName = "Hit Custom Collision"),
 };
 
 /**

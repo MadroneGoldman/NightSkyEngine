@@ -64,6 +64,7 @@ enum class EStateType : uint8
 	Burst,
 	Tag,
 	Assist,
+	BaroqueCancel,
 	Custom,
 };
 
@@ -95,6 +96,7 @@ enum class EStateCondition : uint8
 	MeterThreeBars,
 	MeterFourBars,
 	MeterFiveBars,
+	RecoverableHealthNotZero,
 	PlayerReg1True,
 	PlayerReg2True,
 	PlayerReg3True,

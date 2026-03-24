@@ -39,7 +39,7 @@ void ANightSkyWTGameState::BeginPlay()
 	SequenceActor = GetWorld()->SpawnActor<ALevelSequenceActor>(ALevelSequenceActor::StaticClass());
 }
 
-void ANightSkyWTGameState::Init(APlayerObject* P1, APlayerObject* P2)
+void ANightSkyWTGameState::Init(APlayerObject* P1, APlayerObject* P2,APlayerObject* P1_TagTeammate, APlayerObject* P1_AssistTeammate, TArray<APlayerObject*> P2Allies)
 {
 	bIsBattling = true;
 
@@ -53,6 +53,8 @@ void ANightSkyWTGameState::Init(APlayerObject* P1, APlayerObject* P2)
 		}
 	}
 
+	int TeamCount1 = 1;
+	int TeamCount2 = 1;
 	{
 		Players.Add(P1);
 		P1->SetActorTransform(BattleSceneTransform);
@@ -61,15 +63,56 @@ void ANightSkyWTGameState::Init(APlayerObject* P1, APlayerObject* P2)
 		P1->InitPlayer();
 		P1->GameState = this;
 		P1->AddTickPrerequisiteActor(this);
+
+		if ( P1_TagTeammate != nullptr )
+		{
+			TeamCount1 = 2;
+
+			Players.Add(P1_TagTeammate);
+			P1_TagTeammate->SetActorTransform(BattleSceneTransform);
+			SortedObjects.Add(P1_TagTeammate);
+			P1_TagTeammate->InitPlayer();
+			P1_TagTeammate->GameState = this;
+			P1_TagTeammate->AddTickPrerequisiteActor(this);
+		}
+		if ( P1_AssistTeammate != nullptr )
+		{
+			P1Assist = P1_AssistTeammate;
+			P1_AssistTeammate->SetActorTransform(BattleSceneTransform);
+			SortedObjects.Add(P1_AssistTeammate);
+			P1_AssistTeammate->InitPlayer();
+			P1_AssistTeammate->GameState = this;
+			P1_AssistTeammate->AddTickPrerequisiteActor(this);
+		}
 	}
 	{
 		Players.Add(P2);
 		P2->SetActorTransform(BattleSceneTransform);
 		P2->PlayerFlags |= PLF_IsOnScreen;
 		SortedObjects.Add(P2);
+		P2->bIsCpu = true;
+		P2->SpawnDefaultController();
 		P2->InitPlayer();
 		P2->GameState = this;
 		P2->AddTickPrerequisiteActor(this);
+
+		if ( !P2Allies.IsEmpty() )
+		{
+			for (auto P2Ally : P2Allies)
+			{
+				if (P2Ally == nullptr){continue;}
+				
+				Players.Add(P2Ally);
+				P2Ally->SetActorTransform(BattleSceneTransform);
+				SortedObjects.Add(P2Ally);
+				P2Ally->bIsCpu = true;
+				P2Ally->SpawnDefaultController();
+				P2Ally->InitPlayer();
+				P2Ally->GameState = this;
+				P2Ally->AddTickPrerequisiteActor(this);
+				TeamCount2 += 1;
+			}
+		}
 	}
 
 	for (int i = 0; i < MaxBattleObjects; i++)
@@ -82,7 +125,7 @@ void ANightSkyWTGameState::Init(APlayerObject* P1, APlayerObject* P2)
 	
 	UpdateCamera();
 	
-	MatchInit();
+	MatchInitWt(TeamCount1, TeamCount2);
 	HUDInit();
 }
 

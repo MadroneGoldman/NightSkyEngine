@@ -36,4 +36,7 @@ public:
 	UTexture2D* CharaSplashIcon;
 	UPROPERTY(BlueprintReadOnly, EditAnywhere)
 	TSubclassOf<APlayerObject> PlayerClass;
+
+	UPROPERTY(BlueprintReadOnly, EditAnywhere)
+	bool IsAssist = false;
 };

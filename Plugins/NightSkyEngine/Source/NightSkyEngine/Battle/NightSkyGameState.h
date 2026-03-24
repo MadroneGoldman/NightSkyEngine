@@ -25,6 +25,7 @@ enum class EBattleFormat : uint8
 	Rounds,
 	Tag,
 	KOF,
+	NickTour,
 };
 
 enum EIntroSide
@@ -300,8 +301,10 @@ public:
 	TSubclassOf<ABattleObject> BattleObjectClass = ABattleObject::StaticClass();
 	UPROPERTY()
 	TArray<ABattleObject*> Objects {};
-	UPROPERTY()
+	UPROPERTY(BlueprintReadOnly)
 	TArray<APlayerObject*> Players {};
+	APlayerObject* P1Assist = nullptr;
+	APlayerObject* P2Assist = nullptr;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category=Battle)
 	FBattleState BattleState {};
 	
@@ -396,6 +399,11 @@ public:
 	void MatchInit();
 	void RoundInit();
 	
+	void MatchInitWt(int Team1Count = 1, int Team2Count = 1); // TODO::find non-hardcoded solution
+	
+	UFUNCTION(BlueprintCallable)
+	TArray<FText> GetPlayerNames(); //For UI maybe change this
+
 	void AssignEnemy();
 	
 	void UpdateGameState();
@@ -407,7 +415,7 @@ public:
 	void StartSuperFreeze(int32 Duration, int32 SelfDuration, ABattleObject* CallingObject);
 	void ScreenPosToWorldPos(int32 X, int32 Y, int32& OutX, int32& OutY) const;
 	void WorldPosToScreenPos(int32 X, int32 Y, int32& OutX, int32& OutY) const;
-	ABattleObject* AddBattleObject(const UState* InState, int PosX, int PosY, EObjDir Dir, int32 ObjectStateIndex, bool bIsCommonState, APlayerObject* Parent) const;
+	ABattleObject* AddBattleObject(const UState* InState, int PosX, int PosY, EObjDir Dir, int32 ObjectStateIndex, bool bIsCommonState, APlayerObject* Parent, bool bIsNeutral = false) const;
 	void SetDrawPriorityFront(ABattleObject* InObject) const;
 	void SetDrawPriorityBack(ABattleObject* InObject) const;
 	APlayerObject* SwitchMainPlayer(APlayerObject* InPlayer, int TeamIndex, bool bForce = false, bool bEvenOnScreen = false);

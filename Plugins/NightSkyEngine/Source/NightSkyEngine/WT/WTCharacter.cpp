@@ -24,14 +24,10 @@ void AWTCharacter::BeginPlay()
 	if (GameState)
 		GameState->OnBattleEndDelegate.AddUniqueDynamic(this, &AWTCharacter::EndBattle);
 
-	BattlePlayer = GetWorld()->SpawnActor<APlayerObject>(BattlePlayerClass);
+	//BattlePlayer = GetWorld()->SpawnActor<APlayerObject>(BattlePlayerClass);
+	BattlePlayer = GetWorld()->SpawnActor<APlayerObject>(CharaData->PlayerClass);
+	BattlePlayer->CharacterName = CharaData->CharaFriendlyName;
 	BattlePlayer->SetActorHiddenInGame(true);
-
-	if (!IsPlayerControlled())
-	{
-		BattlePlayer->SpawnDefaultController();
-		BattlePlayer->bIsCpu = true;
-	}
 }
 
 // Called every frame
@@ -53,13 +49,62 @@ void AWTCharacter::StartBattle(AWTCharacter* Opponent)
 	BattlePlayer->SetActorHiddenInGame(false);
 	Opponent->SetActorHiddenInGame(true);
 	Opponent->BattlePlayer->SetActorHiddenInGame(false);
+	Opponent->bNPCInBattle = true; 
 
-	GameState->Init(BattlePlayer, Opponent->BattlePlayer);
+	APlayerObject* PlayerTagTeammate = nullptr;
+	APlayerObject* PlayerAssistTeammate = nullptr;
+	TArray<APlayerObject*> OpponentAllies = {};
+	
+	if (!Allies.IsEmpty())
+	{
+		//Set tag
+		if (Allies[CurrentTagAlly] != nullptr && !Allies[CurrentTagAlly]->IsAssist)
+		{
+			PlayerTagTeammate = GetWorld()->SpawnActor<APlayerObject>(Allies[CurrentTagAlly]->PlayerClass); 
+			PlayerTagTeammate->CharacterName = Allies[CurrentTagAlly]->CharaFriendlyName; 
+			PlayerTagTeammate->SetActorHiddenInGame(true);
+		}
+		
+		//Set assist
+		if (Allies[CurrentAssistAlly] != nullptr && Allies[CurrentTagAlly]->IsAssist)
+		{
+			PlayerAssistTeammate = GetWorld()->SpawnActor<APlayerObject>(Allies[CurrentTagAlly]->PlayerClass); 
+			PlayerAssistTeammate->CharacterName = Allies[CurrentTagAlly]->CharaFriendlyName; 
+			PlayerAssistTeammate->SetActorHiddenInGame(true);
+		}
+	}
+	if (!Opponent->Allies.IsEmpty())
+	{	for (UPrimaryCharaData* OpponentTeammateData : Opponent->Allies )
+	{
+		APlayerObject* OpponentTeammate = nullptr;
+		OpponentTeammate = GetWorld()->SpawnActor<APlayerObject>(OpponentTeammateData->PlayerClass); 
+		OpponentTeammate->CharacterName = OpponentTeammateData->CharaFriendlyName; 
+		OpponentTeammate->SetActorHiddenInGame(true);
+		OpponentAllies.Add(OpponentTeammate);
+	}
+		
+	}
+	
+	GameState->Init(BattlePlayer, Opponent->BattlePlayer, PlayerTagTeammate, PlayerAssistTeammate, OpponentAllies );
 }
 
 void AWTCharacter::EndBattle()
 {
-	SetActorHiddenInGame(false);
-	BattlePlayer->SetActorHiddenInGame(true);
-	EndBattle_BP();
+	if (!bIsNPC || bNPCInBattle)
+	{
+		bNPCInBattle = false;
+		SetActorHiddenInGame(false);
+		BattlePlayer->SetActorHiddenInGame(true);
+		EndBattle_BP(GameState->BattleState.CurrentWinSide);
+	}
+}
+
+FText AWTCharacter::GetCharacterName()
+{
+	return CharaData->CharaFriendlyName;
+}
+
+void AWTCharacter::AddAlly(UPrimaryCharaData* NewAllyData)
+{
+	Allies.Add(NewAllyData);
 }

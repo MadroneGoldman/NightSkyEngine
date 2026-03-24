@@ -4,6 +4,8 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "NightSkyEngine/Battle/NightSkyGameState.h"
+#include "NightSkyEngine/Data/PrimaryCharaData.h"
 #include "WTCharacter.generated.h"
 
 class ANightSkyWTGameState;
@@ -26,6 +28,26 @@ public:
 	
 	UPROPERTY(BlueprintReadOnly)
 	APlayerObject* BattlePlayer;
+
+	UPROPERTY(EditAnywhere)
+	UPrimaryCharaData* CharaData;
+	
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	UPrimaryCharaData* TeammateCharaData;
+	
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	TArray<UPrimaryCharaData*> Allies;
+	
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	int32 CurrentTagAlly = 0;
+	
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	int32 CurrentAssistAlly = 0;
+	
+	UPROPERTY(EditAnywhere)
+	bool bIsNPC = false;
+	
+	bool bNPCInBattle = false;
 	
 protected:
 	// Called when the game starts or when spawned
@@ -45,5 +67,11 @@ public:
 	void EndBattle();
 
 	UFUNCTION(BlueprintImplementableEvent)
-	void EndBattle_BP();
+	void EndBattle_BP(EWinSide WinSide);
+	
+	UFUNCTION(BlueprintCallable)
+	FText GetCharacterName();
+	
+	UFUNCTION(BlueprintCallable)
+	void AddAlly(UPrimaryCharaData* NewAllyData);
 };
