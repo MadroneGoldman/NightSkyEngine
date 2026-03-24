@@ -100,6 +100,12 @@ public:
 	UFUNCTION(BlueprintImplementableEvent)
 	void PlayComboCounterAnim();
 
+	UFUNCTION(BlueprintImplementableEvent)
+	void PlayTookDamageAnim(bool bIsP1);
+	
+	UFUNCTION(BlueprintImplementableEvent)
+	void PlayTagAnim(bool bIsP1);
+
 	void PlayStandardAnimations();
 	void SetAnimationRollbackData();
 	void RollbackAnimations();
