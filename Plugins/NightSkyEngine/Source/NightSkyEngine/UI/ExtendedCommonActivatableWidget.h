@@ -18,7 +18,7 @@ enum class ENightSkyWidgetInputMode : uint8
 };
 
 USTRUCT(BlueprintType)
-struct FInputActionBindingHandle
+struct FInputActionBindingHandleNSE //(avoid name conflict with other struct)
 {
 	GENERATED_BODY()
 	
@@ -49,10 +49,10 @@ protected:
 	virtual void NativeDestruct() override;
 
 	UFUNCTION(BlueprintCallable, Category = ExtendedActivatableWidget)
-	void RegisterBinding(FDataTableRowHandle InputAction, const FInputActionExecutedDelegate& Callback, FInputActionBindingHandle& BindingHandle);
+	void RegisterBinding(FDataTableRowHandle InputAction, const FInputActionExecutedDelegate& Callback, FInputActionBindingHandleNSE& BindingHandle);
 
 	UFUNCTION(BlueprintCallable, Category = ExtendedActivatableWidget)
-	void UnregisterBinding(FInputActionBindingHandle BindingHandle);
+	void UnregisterBinding(FInputActionBindingHandleNSE BindingHandle);
 
 	UFUNCTION(BlueprintCallable, Category = ExtendedActivatableWidget)
 	void UnregisterAllBindings();
