@@ -1678,7 +1678,7 @@ void ANightSkyGameState::UpdateHUD()
 			for (int i = 0; i < BattleState.TeamData[1].TeamCount; i++)
 			{
 				//Tag cooldown timers
-				BattleHudActor->TopWidget->P2Cooldowns[i] = BattleState.TeamData[0].CooldownTimer[i];
+				BattleHudActor->TopWidget->P2Cooldowns[i] = BattleState.TeamData[1].CooldownTimer[i];
 				
 				//BattleHudActor->TopWidget->P2Health[i] = static_cast<float>(GetTeam(false)[i]->CurrentHealth) /
 				//	static_cast<float>(GetTeam(false)[i]->MaxHealth);

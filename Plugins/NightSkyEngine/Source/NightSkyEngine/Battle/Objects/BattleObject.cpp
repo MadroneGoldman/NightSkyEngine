@@ -1667,9 +1667,9 @@ void ABattleObject::CollisionView()
 		}
 		Lines.Add(CurrentLines);
 		FLinearColor color;
-		if (Box.Type == BOX_Special_Hitbox)
+		if (Box.Type == BOX_Special_Hurtbox)
 			color = FLinearColor(1.f, 0.f, 0.5f, .25f);
-		if (Box.Type == BOX_Special_Hitbox)
+		else if (Box.Type == BOX_Special_Hitbox)
 			color = FLinearColor(0.f, 0.f, 1.f, .25f);
 		else if (Box.Type == BOX_Hit)
 			color = FLinearColor(1.f, 0.f, 0.f, .25f);
@@ -1917,6 +1917,9 @@ void ABattleObject::UpdateVisualsNoRollback()
 			FName UsedSocketName  = SocketName;
 			FVector FinalSocketOffset = SocketOffset;
 			FVector FinalSocketRotationOffset = SocketRotationOffset;
+			// FIXME: no braces on this if, so only the UsedSocketName line is conditional.
+			// The FinalSocketOffset.Y / FinalSocketRotationOffset.Y lines below run for both directions.
+			// (Those two values are currently unused further down, so this has no effect yet.)
 			if (Direction != DIR_Right)
 				UsedSocketName  = SocketNameLeft;
 				FinalSocketOffset.Y = -SocketOffset.Y;
