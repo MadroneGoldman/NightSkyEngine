@@ -26,8 +26,13 @@ enum EInputFlags
 	INP_F = 0x400 UMETA(DisplayName = "F"),
 	INP_G = 0x800 UMETA(DisplayName = "G"),
 	INP_H = 0x1000 UMETA(DisplayName = "H"),
+	INP_Invalid = 0x10000000, // This bit marks the input as a invalid input entry in the input buffer
+	INP_Valid = 0x20000000 UMETA(Hidden), // This bit marks the input as a valid input entry in the input buffer
 	INP_ResetTraining = 0x40000000 UMETA(Hidden),
 	INP_Rematch = 0x80000000 UMETA(Hidden),
+	INP_HiddenValues = INP_Valid + INP_ResetTraining + INP_Rematch UMETA(Hidden),
+	INP_Directions = INP_Up | INP_Down | INP_Left | INP_Right UMETA(Hidden),
+	INP_Buttons = INP_A | INP_B | INP_C | INP_D | INP_E | INP_F | INP_G | INP_H UMETA(Hidden),
 };
 
 ENUM_CLASS_FLAGS(EInputFlags);
@@ -108,6 +113,10 @@ enum EMiscFlags
 	* Flag sets if object will ignore super freeze.
 	 */
 	MISC_IgnoreSuperFreeze = 0x200 UMETA(DisplayName = "Ignore Super Freeze"),
+	/**
+	 * Flag sets if object is currently parrying.
+	 */
+	MISC_Parrying = 0x400 UMETA(DisplayName = "Set Currently Parrying"),
 };
 
 /**

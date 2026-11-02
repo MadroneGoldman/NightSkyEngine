@@ -42,13 +42,7 @@ void ABattleObject::BeginPlay()
 
 void ABattleObject::Move()
 {
-	if (IsPlayer)
-	{
-		if (Player->PlayerFlags & PLF_IsThrowLock)
-			return;
-		Player->SetHitValuesOverTime();
-	}
-	else
+	if (!IsPlayer)
 	{
 		PositionLinkUpdate();
 	}
@@ -73,15 +67,23 @@ void ABattleObject::Move()
 		if (!MaxCelTime) return;
 		
 		const auto FrameAnim = AnimFrame + (BlendAnimFrame - AnimFrame) * (MaxCelTime - TimeUntilNextCel) / MaxCelTime;
-		const auto RootMotion = BodyAnimUserData->GetRootTranslationAtTime(FrameAnim);
-
-		AddPosXWithDir(RootMotion.X - PrevRootMotionX);
-		PosY += RootMotion.Y - PrevRootMotionY;
-		PosZ += RootMotion.Z - PrevRootMotionZ;
-
+		const auto [X, Y, Z] = BodyAnimUserData->GetRootTranslationAtFrame60(FrameAnim);
+		FVector3d vec_in = FVector3d(X, Y, Z);
+		FVector3d vec_out = GameState->BattleSceneTransform.GetRotation().UnrotateVector(vec_in);
+		// RootTranslation data is incremental relative to the last frame.
+		AddPosXWithDir(vec_out.X);
+		PosY += vec_out.Z;
+		PosZ += vec_out.Y;
 		return;
 	}
-	ApplyRootMotion();
+
+	if (IsPlayer)
+	{
+		if (Player->PlayerFlags & PLF_IsThrowLock)
+			return;
+		Player->SetHitValuesOverTime();
+		return;
+	}
 
 	SpeedX = SpeedX * SpeedXRatePerFrame / 100;
 	SpeedY = SpeedY * SpeedYRatePerFrame / 100;
@@ -402,7 +404,6 @@ void ABattleObject::Tick(float DeltaTime)
 	if (!GameState)
 	{
 		ScreenSpaceDepthOffset = 0;
-		OrthoBlendActive = 1;
 	}
 }
 
@@ -484,8 +485,8 @@ void ABattleObject::HandlePushCollision(ABattleObject* OtherObj)
 					CollisionDepth = OtherObj->R - L;
 				}
 
-				if (IsPlayer && Player->PlayerFlags & PLF_TouchingWall 
-					|| OtherObj->IsPlayer && OtherObj->Player->PlayerFlags & PLF_TouchingWall)
+				if ((IsPlayer && Player->PlayerFlags & PLF_TouchingWall) 
+					|| (OtherObj->IsPlayer && OtherObj->Player->PlayerFlags & PLF_TouchingWall))
 				{
 					OtherObj->PosX -= CollisionDepth;
 					PosX += CollisionDepth;
@@ -575,12 +576,27 @@ void ABattleObject::HandleHitCollision(ABattleObject* AttackedObj)
 			AttackedPlayer->ObjectsToIgnoreHitsFrom.AddUnique(this);
 			AttackedPlayer->FaceOpponent();
 			AttackedPlayer->HaltMomentum();
-			AttackedPlayer->PlayerFlags |= PLF_IsStunned;
 			AttackFlags |= ATK_HasHit;
 			if (AttackFlags & ATK_SetPlayerHit) Player->AttackFlags |= ATK_HasHit;
 			AttackTarget = AttackedPlayer;
 
-			TriggerEvent(EVT_HitOrBlock, StateMachine_Primary);
+			if (AttackedPlayer->MiscFlags & MISC_Parrying)
+			{
+				AttackedPlayer->CallSubroutine(AttackedPlayer->HandleParrySubroutineName);
+				// 1 on successful parry, 0 else.
+				if (AttackedPlayer->SubroutineReturnVal1)
+				{
+					TriggerEvent(EVT_Parried, StateMachine_Primary);
+					const FHitData Data = InitHitDataByAttackLevel(false);
+					// Strictly speaking, handling hitstop should be user (and thus blueprint) configurable...
+					Hitstop = Data.Hitstop;
+					AttackedPlayer->Hitstop = Data.Hitstop;
+					PlayCommonSound(Sound_Parry);
+					return;
+				}
+			}
+			// flag set here because hitting a parrying opponent doesn't stun them.
+			AttackedPlayer->PlayerFlags |= PLF_IsStunned;			TriggerEvent(EVT_HitOrBlock, StateMachine_Primary);
 			if (AttackedPlayer->IsMainPlayer())
 			{
 				TriggerEvent(EVT_HitOrBlockMainPlayer, StateMachine_Primary);
@@ -1610,12 +1626,15 @@ void ABattleObject::CollisionView()
 			color = FLinearColor(0.f, 1.f, 1.f, .25f);
 		else
 			color = FLinearColor(0.f, 1.f, 0.f, .25f);
+		
+		FTransform OffsetTransform = FTransform::Identity;
+		if (GameState){OffsetTransform =  GameState->BattleSceneTransform;}
+		
 		for (const auto& LineSet : Lines.Last())
 		{
-			auto start = LineSet[0];
-			auto end = LineSet[1];
-			DrawDebugLine(GetWorld(), FVector(start.X, 0, start.Y), FVector(end.X, 0, end.Y), color.ToFColor(false),
-			              false, 1 / 60, 255, 2.f);
+			auto start = OffsetTransform.GetRotation().RotateVector(FVector( LineSet[0].X, 0,  LineSet[0].Y)) + OffsetTransform.GetLocation();
+			auto end = OffsetTransform.GetRotation().RotateVector(FVector( LineSet[1].X, 0,  LineSet[1].Y)) + OffsetTransform.GetLocation();
+			DrawDebugLine(GetWorld(), start, end, color.ToFColor(false),false, 1 / 60, 255, 2.f);
 		}
 	}
 	TArray<FVector2D> CurrentCorners;
@@ -1630,12 +1649,14 @@ void ABattleObject::CollisionView()
 	}
 	FLinearColor color = FLinearColor(1.f, 1.f, 0.f, .2f);
 
+	FTransform OffsetTransform = FTransform::Identity;
+	if (GameState){OffsetTransform =  GameState->BattleSceneTransform;}
+	
 	for (const auto& LineSet : CurrentLines)
 	{
-		auto start = LineSet[0];
-		auto end = LineSet[1];
-		DrawDebugLine(GetWorld(), FVector(start.X, 0, start.Y), FVector(end.X, 0, end.Y), color.ToFColor(false), false,
-		              1 / 60, 255, 2.f);
+		auto start = OffsetTransform.GetRotation().RotateVector(FVector( LineSet[0].X, 0,  LineSet[0].Y)) + OffsetTransform.GetLocation();
+		auto end =  OffsetTransform.GetRotation().RotateVector(FVector( LineSet[1].X, 0,  LineSet[1].Y)) + OffsetTransform.GetLocation();
+		DrawDebugLine(GetWorld(), start, end, color.ToFColor(false),false, 1 / 60, 255, 2.f);
 	}
 }
 
@@ -1658,39 +1679,6 @@ void ABattleObject::LoadForRollback(const unsigned char* Buffer)
 	}
 }
 
-void FBattleObjectLog::LogForSyncTestFile(std::ofstream& file)
-{
-	if (file)
-	{
-		file << "BattleObject:\n";
-		file << "\tPosX: " << PosX << std::endl;
-		file << "\tPosY: " << PosY << std::endl;
-		file << "\tPosZ: " << PosZ << std::endl;
-		file << "\tPrevPosX: " << PrevPosX << std::endl;
-		file << "\tPrevPosY: " << PrevPosY << std::endl;
-		file << "\tPrevPosZ: " << PrevPosZ << std::endl;
-		file << "\tSpeedX: " << SpeedX << std::endl;
-		file << "\tSpeedY: " << SpeedY << std::endl;
-		file << "\tSpeedZ: " << SpeedZ << std::endl;
-		file << "\tGravity: " << Gravity << std::endl;
-		file << "\tInertia: " << Inertia << std::endl;
-		file << "\tActionTime: " << ActionTime << std::endl;
-		file << "\tPushHeight: " << PushHeight << std::endl;
-		file << "\tPushHeightLow: " << PushHeightLow << std::endl;
-		file << "\tPushWidth: " << PushWidth << std::endl;
-		file << "\tStunTime: " << StunTime << std::endl;
-		file << "\tStunTimeMax: " << StunTimeMax << std::endl;
-		file << "\tHitstop: " << Hitstop << std::endl;
-		file << "\tCelName: " << TCHAR_TO_ANSI(*CelName.ToString()) << std::endl;
-		file << "\tAttackFlags: " << AttackFlags << std::endl;
-		file << "\tDirection: " << Direction << std::endl;
-		file << "\tMiscFlags: " << MiscFlags << std::endl;
-		file << "\tCelIndex: " << CelIndex << std::endl;
-		file << "\tTimeUntilNextCel: " << TimeUntilNextCel << std::endl;
-		file << "\tAnimFrame: " << AnimFrame << std::endl;
-	}
-}
-
 void ABattleObject::UpdateVisuals()
 {
 	if (!IsActive) return;
@@ -1704,7 +1692,6 @@ void ABattleObject::UpdateVisuals()
 			ScreenSpaceDepthOffset = 0;
 			if (DrawPriorityLinkObj)
 				ScreenSpaceDepthOffset = DrawPriorityLinkObj->ScreenSpaceDepthOffset;
-			OrthoBlendActive = FMath::Lerp(OrthoBlendActive, 0, 0.2);
 		}
 		else
 		{
@@ -1712,13 +1699,11 @@ void ABattleObject::UpdateVisuals()
 				ScreenSpaceDepthOffset = DrawPriorityLinkObj->ScreenSpaceDepthOffset;
 			else
 				ScreenSpaceDepthOffset = (MaxDrawPriority - DrawPriority) * 50;
-			OrthoBlendActive = FMath::Lerp(OrthoBlendActive, 1, 0.2);
 		}
 	}
 	else
 	{
 		ScreenSpaceDepthOffset = 0;
-		OrthoBlendActive = 1;
 	}
 
 	AddColor = FMath::Lerp(AddColor, AddFadeColor, AddFadeSpeed);
@@ -1841,7 +1826,6 @@ void ABattleObject::UpdateVisualsNoRollback()
 	if (LinkedParticle)
 	{
 		LinkedParticle->SetVariableFloat(FName("ScreenSpaceDepthOffset"), ScreenSpaceDepthOffset);
-		LinkedParticle->SetVariableFloat(FName("OrthoBlendActive"), OrthoBlendActive);
 	}
 	
 	TInlineComponentArray<UPrimitiveComponent*> Components(this);
@@ -1854,7 +1838,6 @@ void ABattleObject::UpdateVisualsNoRollback()
 			{
 				MIDynamic->SetScalarParameterValue(FName(TEXT("Transparency")), Transparency);
 				MIDynamic->SetScalarParameterValue(FName(TEXT("ScreenSpaceDepthOffset")), ScreenSpaceDepthOffset);
-				MIDynamic->SetScalarParameterValue(FName(TEXT("OrthoBlendActive")), OrthoBlendActive);
 				MIDynamic->SetVectorParameterValue(FName(TEXT("AddColor")), AddColor);
 				MIDynamic->SetVectorParameterValue(FName(TEXT("MulColor")), MulColor);
 				MIDynamic->SetVectorParameterValue(FName(TEXT("DamageColor")), DamageColor);
@@ -1867,7 +1850,6 @@ void ABattleObject::UpdateVisualsNoRollback()
 			{
 				MIDynamic->SetScalarParameterValue(FName(TEXT("Transparency")), Transparency);
 				MIDynamic->SetScalarParameterValue(FName(TEXT("ScreenSpaceDepthOffset")), ScreenSpaceDepthOffset);
-				MIDynamic->SetScalarParameterValue(FName(TEXT("OrthoBlendActive")), OrthoBlendActive);
 				MIDynamic->SetVectorParameterValue(FName(TEXT("DamageColor")), DamageColor);
 				MIDynamic->SetVectorParameterValue(FName(TEXT("DamageColor2")), DamageColor2);
 			}
@@ -1898,7 +1880,6 @@ void ABattleObject::UpdateVisualsNoRollback()
 				}
 				MIDynamic->SetScalarParameterValue(TEXT("Transparency"), Transparency);
 				MIDynamic->SetScalarParameterValue(FName(TEXT("ScreenSpaceDepthOffset")), ScreenSpaceDepthOffset);
-				MIDynamic->SetScalarParameterValue(FName(TEXT("OrthoBlendActive")), OrthoBlendActive);
 				MIDynamic->SetVectorParameterValue(FName(TEXT("DamageColor")), DamageColor);
 				MIDynamic->SetVectorParameterValue(FName(TEXT("DamageColor2")), DamageColor2);
 			}
@@ -2107,6 +2088,10 @@ void ABattleObject::Update()
 
 	if (!IsPlayer)
 	{
+		Move();
+		
+		GameState->SetScreenBounds();
+		
 		if (ActionTime == 0)
 		{
 			ObjectState->Init();
@@ -2119,10 +2104,6 @@ void ABattleObject::Update()
 			LinkedActor->Update();
 		
 		UpdateCel();
-		
-		Move();
-		
-		GameState->SetScreenBounds();
 		ActionTime++;
 
 		if (MiscFlags & MISC_DeactivateIfBeyondBounds)
@@ -2147,7 +2128,6 @@ void ABattleObject::ResetObject()
 		LinkedParticle = nullptr;
 	}
 	RemoveLinkActor();
-	OrthoBlendActive = 1;
 	
 	IsActive = false;
 	PosX = 0;
@@ -2248,6 +2228,8 @@ void ABattleObject::ResetObject()
 	{
 		Box = FCollisionBox();
 	}
+	LabelName = FGameplayTag();
+	GotoLabelActive = false;
 	ObjectStateName = FGameplayTag();
 	ObjectID = 0;
 	Player = nullptr;
@@ -2665,7 +2647,7 @@ void ABattleObject::EnableHit(bool Enabled)
 	}
 }
 
-void ABattleObject::SetAttacking(bool Attacking)
+void ABattleObject::SetAttacking(bool Attacking, bool AllowCancel)
 {
 	if (Attacking)
 	{
@@ -2677,6 +2659,10 @@ void ABattleObject::SetAttacking(bool Attacking)
 		AttackFlags &= ~ATK_IsAttacking;
 	}
 	AttackFlags &= ~ATK_HitActive;
+	if (IsPlayer)
+	{
+		Player->EnableChainCancel(AllowCancel);
+	}
 }
 
 void ABattleObject::SetPlayerHit(bool Enable)
@@ -2758,6 +2744,19 @@ void ABattleObject::DeactivateObject()
 
 	// Wait until the next frame to complete
 	MiscFlags |= MISC_DeactivateOnNextUpdate;
+}
+
+void ABattleObject::SetParrying(bool enable)
+{
+	if (enable)
+		MiscFlags |= MISC_Parrying;
+	else
+		MiscFlags &= ~MISC_Parrying;
+}
+
+void ABattleObject::SetHandleParrySubroutine(FGameplayTag name)
+{
+	HandleParrySubroutineName = name;
 }
 
 bool ABattleObject::CheckBoxOverlap(ABattleObject* OtherObj, const EBoxType SelfType, const FGameplayTag SelfCustomType,
@@ -2843,8 +2842,8 @@ bool ABattleObject::CheckBoxOverlap(ABattleObject* OtherObj, const EBoxType Self
 		// Calculate vertices
 		int32 P1[2] = {-Box.SizeX / 2, -Box.SizeY / 2};
 		int32 P2[2] = {-Box.SizeX / 2, Box.SizeY / 2};
-		int32 P3[2] = {Box.SizeX / 2, -Box.SizeY / 2};
-		int32 P4[2] = {Box.SizeX / 2, Box.SizeY / 2};
+		int32 P3[2] = {Box.SizeX / 2, Box.SizeY / 2};
+		int32 P4[2] = {Box.SizeX / 2, -Box.SizeY / 2};
 
 		// Calculate rotated points
 		auto Angle = Direction == DIR_Right ? AnglePitch_x1000 : 180000 - AnglePitch_x1000 + 180000;
@@ -2905,9 +2904,9 @@ bool ABattleObject::CheckBoxOverlap(ABattleObject* OtherObj, const EBoxType Self
 
 			int32 OtherP1[2] = {-OtherBox.SizeX / 2, -OtherBox.SizeY / 2};
 			int32 OtherP2[2] = {-OtherBox.SizeX / 2, OtherBox.SizeY / 2};
-			int32 OtherP3[2] = {OtherBox.SizeX / 2, -OtherBox.SizeY / 2};
-			int32 OtherP4[2] = {OtherBox.SizeX / 2, OtherBox.SizeY / 2};
-
+			int32 OtherP3[2] = {OtherBox.SizeX / 2, OtherBox.SizeY / 2};
+			int32 OtherP4[2] = {OtherBox.SizeX / 2, -OtherBox.SizeY / 2};
+			
 			auto OtherAngle = OtherObj->Direction == DIR_Right
 				                  ? OtherObj->AnglePitch_x1000
 				                  : 180000 - OtherObj->AnglePitch_x1000 + 180000;
@@ -3158,7 +3157,6 @@ void ABattleObject::CreateCommonParticle(FGameplayTag Name, EPosType PosType, FV
 					NiagaraComponent->SetVariableVec2(FName("PivotOffset"), FVector2D(0, 0.5));
 				}
 				NiagaraComponent->SetVariableFloat(FName("ScreenSpaceDepthOffset"), ScreenSpaceDepthOffset);
-				NiagaraComponent->SetVariableFloat(FName("OrthoBlendActive"), OrthoBlendActive);
 				NiagaraComponent->SetCustomDepthStencilValue(2);
 				NiagaraComponent->SetBoundsScale(40000);
 				break;
@@ -3200,7 +3198,6 @@ void ABattleObject::CreateCharaParticle(FGameplayTag Name, EPosType PosType, FVe
 					NiagaraComponent->SetVariableVec2(FName("PivotOffset"), FVector2D(0, 0.5));
 				}
 				NiagaraComponent->SetVariableFloat(FName("ScreenSpaceDepthOffset"), ScreenSpaceDepthOffset);
-				NiagaraComponent->SetVariableFloat(FName("OrthoBlendActive"), OrthoBlendActive);
 				NiagaraComponent->SetCustomDepthStencilValue(2);
 				NiagaraComponent->SetBoundsScale(40000);
 				break;

@@ -5,13 +5,12 @@
 
 #include "NightSkyEngine/Battle/NightSkyGameState.h"
 #include "NightSkyEngine/Battle/Actors/LinkActor.h"
+#include "NightSkyEngine/Battle/Misc/NightSkyBlueprintFunctionLibrary.h"
 #include "NightSkyEngine/Battle/Script/Subroutine.h"
 #include "NightSkyEngine/Data/LinkActorData.h"
 #include "NightSkyEngine/Data/ParticleData.h"
 #include "NightSkyEngine/Data/SubroutineData.h"
 #include "NightSkyEngine/Miscellaneous/NightSkyGameInstance.h"
-#include "Serialization/ObjectReader.h"
-#include "Serialization/ObjectWriter.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(PlayerObject)
 
@@ -30,24 +29,6 @@ UE_DEFINE_GAMEPLAY_TAG_COMMENT(Subroutine_Cmn_HitCollision, "Subroutine.Cmn.HitC
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(Subroutine_Cmn_OnBlock, "Subroutine.Cmn.OnBlock", "Common On Block");
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(Subroutine_Cmn_OnHit, "Subroutine.Cmn.OnHit", "Common On Hit");
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(Subroutine_Cmn_OnCounterHit, "Subroutine.Cmn.OnCounterHit", "Common On Counter Hit");
-
-void FPlayerObjectLog::LogForSyncTestFile(std::ofstream& file)
-{
-	FBattleObjectLog::LogForSyncTestFile(file);
-	if (file)
-	{
-		file << "PlayerObject:\n";
-		file << "\tCurrentAirJumpCount: " << CurrentAirJumpCount << std::endl;
-		file << "\tCurrentAirDashCount: " << CurrentAirDashCount << std::endl;
-		file << "\tAirDashTimer: " << AirDashTimer << std::endl;
-		file << "\tAirDashTimerMax: " << AirDashTimerMax << std::endl;
-		file << "\tCurrentHealth: " << CurrentHealth << std::endl;
-		file << "\tCancelFlags: " << CancelFlags << std::endl;
-		file << "\tPlayerFlags: " << PlayerFlags << std::endl;
-		file << "\tInputs: " << StoredInputBuffer.InputBufferInternal[InputBufferSize - 1] << std::endl;
-		file << "\tStance: " << Stance.GetValue() << std::endl;
-	}
-}
 
 APlayerObject::APlayerObject()
 {
@@ -214,6 +195,13 @@ void APlayerObject::InitPlayer()
 		for (auto SubroutineClass : CommonSubroutineData->SubroutineArray)
 		{
 			if (!IsValid(SubroutineClass)) continue;
+			
+			if (Cast<USubroutine>(SubroutineClass->GetSuperClass()->GetDefaultObject())->Name != FGameplayTag::EmptyTag)
+			{
+				UE_LOGFMT(LogTemp, Error, "Subroutine class '{0}' inherits from non-generic subroutine '{1}'!", 
+					SubroutineClass->GetName(), SubroutineClass->GetSuperClass()->GetName());
+			}
+			
 			auto Subroutine = NewObject<USubroutine>(this, SubroutineClass);
 			AddSubroutine(Subroutine->Name, Subroutine, true);
 		}
@@ -223,6 +211,13 @@ void APlayerObject::InitPlayer()
 		for (auto SubroutineClass : CharaSubroutineData->SubroutineArray)
 		{
 			if (!IsValid(SubroutineClass)) continue;
+			
+			if (Cast<USubroutine>(SubroutineClass->GetSuperClass()->GetDefaultObject())->Name != FGameplayTag::EmptyTag)
+			{
+				UE_LOGFMT(LogTemp, Error, "Subroutine class '{0}' inherits from non-generic subroutine '{1}'!", 
+					SubroutineClass->GetName(), SubroutineClass->GetSuperClass()->GetName());
+			}
+
 			auto Subroutine = NewObject<USubroutine>(this, SubroutineClass);
 			AddSubroutine(Subroutine->Name, Subroutine, false);
 		}
@@ -321,7 +316,7 @@ bool APlayerObject::HandleAutoCombo(int32 StateIndex, FStateMachine& StateMachin
 		FInputCondition AutoComboCondition;
 		AutoComboCondition.Sequence.Add(FInputBitmask(Button));
 		AutoComboCondition.Sequence.Last().Lenience = 0;
-		AutoComboCondition.Method = EInputMethod::Once;
+		AutoComboCondition.Method = EInputMethod::PositiveEdge;
 
 		if (CheckInput(AutoComboCondition))
 		{
@@ -422,19 +417,25 @@ bool APlayerObject::HandleStateTransition(int32 StateIndex, bool Buffer, FStateM
 	return false; //state couldn't be entered
 }
 
+void APlayerObject::CallPostUpdateDebugBps()
+{
+	CallSubroutine(Subroutine_Cmn_PostUpdateDebug);
+	CallSubroutine(Subroutine_PostUpdateDebug);
+}
+
 void APlayerObject::Update()
 {
 	if ((PlayerFlags & PLF_IsOnScreen) == 0)
 	{
-		return;
+		return CallPostUpdateDebugBps();
 	}
 
-	if (Inputs << 27 == 0) //if no direction, set neutral input
+	if ((Inputs & INP_Directions) == 0) //if no direction, set neutral input
 		Inputs |= INP_Neutral;
 	else
 		Inputs = Inputs & ~INP_Neutral; //remove neutral input if directional input
 
-	if (Inputs >> 5 != StoredInputBuffer.InputBufferInternal[InputBufferSize - 1] >> 5)
+	if ((Inputs & INP_Buttons) != StoredInputBuffer.InputBufferInternal[InputBufferSize - 1] >> 5)
 	{
 		IntroEndFlag = true;
 		if (RoundWinTimer <= 0 || (bIsCpu && Enemy->IntroEndFlag))
@@ -479,92 +480,6 @@ void APlayerObject::Update()
 	
 	if (ComboCounter > 0)
 		ComboTimer++;
-
-	if (PlayerFlags & PLF_IsThrowLock)
-	{
-		if (!bIsCpu) StoredInputBuffer.Update(Inputs, IsStopped());
-
-		HandleStateMachine(true, PrimaryStateMachine); //handle state transitions
-		PrimaryStateMachine.Update();
-
-		for (auto& StateMachine : SubStateMachines)
-		{
-			HandleStateMachine(false, StateMachine);
-			StateMachine.Update();
-		}
-
-		UpdateCel();
-
-		if (ActionTime < ThrowTechTimer)
-		{
-			if (PrimaryStateMachine.GetStateIndex(State_Universal_Throw) != INDEX_NONE)
-			{
-				bool IsTech = true;
-				if (!CanProximityThrow)
-				{
-					const auto ThrowState = PrimaryStateMachine.States[PrimaryStateMachine.GetStateIndex(
-						State_Universal_Throw)];
-					for (auto InputConditionList : ThrowState->InputConditionLists)
-					{
-						IsTech = true;
-						for (auto InputCondition : InputConditionList.InputConditions)
-						{
-							if (!CheckInput(InputCondition))
-							{
-								IsTech = false;
-								break;
-							}
-						}
-						if (IsTech == true) break;
-					}
-				}
-				else
-				{
-					FInputCondition Left;
-					FInputBitmask BitmaskLeft;
-					BitmaskLeft.InputFlag = INP_Left;
-					BitmaskLeft.Lenience = 1;
-					Left.Sequence.Add(BitmaskLeft);
-					Left.Method = EInputMethod::Strict;
-					FInputCondition Right;
-					FInputBitmask BitmaskRight;
-					BitmaskRight.InputFlag = INP_Right;
-					BitmaskRight.Lenience = 1;
-					Right.Sequence.Add(BitmaskRight);
-					Right.Method = EInputMethod::Strict;
-					if (!CheckInput(ProximityThrowInput) || (!CheckInput(Left) && !CheckInput(Right)))
-					{
-						IsTech = false;
-					}
-				}
-				if (IsTech)
-				{
-					PlayerFlags &= ~PLF_IsThrowLock;
-					FaceOpponent();
-					if (Enemy->Stance != ACT_Jumping)
-					{
-						JumpToStatePrimary(State_Universal_GuardBreakStand);
-						Enemy->JumpToStatePrimary(State_Universal_GuardBreakStand);
-						InitEventHandler(EVT_Update, "ThrowTech", 0, FGameplayTag::EmptyTag);
-						Enemy->InitEventHandler(EVT_Update, "ThrowTech", 0, FGameplayTag::EmptyTag);
-					}
-					else
-					{
-						JumpToStatePrimary(State_Universal_GuardBreakAir);
-						Enemy->JumpToStatePrimary(State_Universal_GuardBreakAir);
-						InitEventHandler(EVT_Update, "ThrowTechAir", 0, FGameplayTag::EmptyTag);
-						Enemy->InitEventHandler(EVT_Update, "ThrowTechAir", 0, FGameplayTag::EmptyTag);
-					}
-					ColPosX = (PosX + Enemy->PosX) / 2;
-					ColPosY = (PosY + Enemy->PosY) / 2 + 250000;
-					CreateCommonParticle(Particle_ThrowTech, POS_Col);
-					return;
-				}
-			}
-		}
-		ActionTime++;
-		return;
-	}
 
 	if (CurrentHealth <= 0 && (PlayerFlags & PLF_IsDead) == 0)
 	{
@@ -629,7 +544,99 @@ void APlayerObject::Update()
 		{
 			HandleStateMachine(false, StateMachine);
 		}
-		return;
+		return CallPostUpdateDebugBps();
+	}
+
+	if (PlayerFlags & PLF_IsThrowLock)
+	{
+		if (!bIsCpu) StoredInputBuffer.Update(Inputs, IsStopped());
+
+		HandleStateMachine(true, PrimaryStateMachine); //handle state transitions
+		PrimaryStateMachine.Update();
+
+		for (auto& StateMachine : SubStateMachines)
+		{
+			HandleStateMachine(false, StateMachine);
+			StateMachine.Update();
+		}
+
+		UpdateCel();
+
+		if (ActionTime < ThrowTechTimer)
+		{
+			if (PrimaryStateMachine.GetStateIndex(State_Universal_Throw) != INDEX_NONE)
+			{
+				bool IsTech = true;
+				if (!CanProximityThrow)
+				{
+					const auto ThrowState = PrimaryStateMachine.States[PrimaryStateMachine.GetStateIndex(
+						State_Universal_Throw)];
+					for (auto InputConditionList : ThrowState->InputConditionLists)
+					{
+						IsTech = true;
+						for (auto InputCondition : InputConditionList.InputConditions)
+						{
+							if (!CheckInput(InputCondition))
+							{
+								IsTech = false;
+								break;
+							}
+						}
+						if (IsTech == true) break;
+					}
+				}
+				else
+				{
+					FInputCondition Left;
+					FInputBitmask BitmaskLeft;
+					BitmaskLeft.InputFlag = INP_Left;
+					BitmaskLeft.Lenience = 1;
+					Left.Sequence.Add(BitmaskLeft);
+					Left.Method = EInputMethod::Strict;
+					FInputCondition Right;
+					FInputBitmask BitmaskRight;
+					BitmaskRight.InputFlag = INP_Right;
+					BitmaskRight.Lenience = 1;
+					Right.Sequence.Add(BitmaskRight);
+					Right.Method = EInputMethod::Strict;
+					if (!CheckInput(ProximityThrowInput) || (!CheckInput(Left) && !CheckInput(Right)))
+					{
+						IsTech = false;
+					}
+				}
+				if (IsTech)
+				{
+					PlayerFlags &= ~PLF_IsThrowLock;
+					FaceOpponent();
+					if (Enemy->Stance != ACT_Jumping)
+					{
+						// GuardBreak is a hitstun state which means you need an attack owner. The enemy is likely in a throw state and
+						// so doesn't have an attack owner, assign them one.
+						Enemy->AttackOwner = this;
+						JumpToStatePrimary(State_Universal_GuardBreakStand);
+						Enemy->JumpToStatePrimary(State_Universal_GuardBreakStand);
+						InitEventHandler(EVT_Update, "ThrowTech", 0, FGameplayTag::EmptyTag);
+						Enemy->InitEventHandler(EVT_Update, "ThrowTech", 0, FGameplayTag::EmptyTag);
+					}
+					else
+					{
+						Enemy->AttackOwner = this;
+						JumpToStatePrimary(State_Universal_GuardBreakAir);
+						Enemy->JumpToStatePrimary(State_Universal_GuardBreakAir);
+						InitEventHandler(EVT_Update, "ThrowTechAir", 0, FGameplayTag::EmptyTag);
+						Enemy->InitEventHandler(EVT_Update, "ThrowTechAir", 0, FGameplayTag::EmptyTag);
+					}
+					ColPosX = (PosX + Enemy->PosX) / 2;
+					ColPosY = (PosY + Enemy->PosY) / 2 + 250000;
+					CreateCommonParticle(Particle_ThrowTech, POS_Col);
+					return CallPostUpdateDebugBps();
+				}
+			}
+		}
+		// Throw lock branch is terminating, however throw animations can induce motion so we invoke move here.
+		Move();
+		ActionTime++;
+		return CallPostUpdateDebugBps();
 	}
 
 	//reset moves used in combo if not currently doing combo 
@@ -663,14 +670,14 @@ void APlayerObject::Update()
 		else StoredInputBuffer.Update(INP_Neutral, IsStopped());
 	}
 
-	if (AirDashTimer > 0)
-	{
-		AirDashTimer--;
-	}
 	if (AirDashTimer == 1)
 	{
 		CallSubroutine(Subroutine_Cmn_AnyCancel_Air);
 		SpeedX /= 2;
+	}
+	if (AirDashTimer > 0)
+	{
+		AirDashTimer--;
 	}
 
 	if (AirDashNoAttackTime > 0)
@@ -691,8 +698,6 @@ void APlayerObject::Update()
 		}
 	}
 
-	if (StunTime > 0)
-		StunTime--;
 	if (StunTime <= 0 && !(PlayerFlags & PLF_IsDead) && CheckIsStunned())
 	{
 		if (PrimaryStateMachine.CurrentState->StateType == EStateType::Blockstun)
@@ -742,6 +747,8 @@ void APlayerObject::Update()
 			}
 		}
 	}
+	if (StunTime > 0)
+		StunTime--;
 
 	if (PlayerFlags & PLF_TouchingWall && Enemy->PrimaryStateMachine.CurrentState->StateType != EStateType::Hitstun &&
 		Pushback != 0)
@@ -780,9 +787,8 @@ void APlayerObject::Update()
 	if (PlayerFlags & PLF_IsDead)
 		DisableState(ENB_Tech, StateMachine_Primary);
 
-	InstantBlockLockoutTimer--;
-
 	HandleProximityBlock();
+	InstantBlockLockoutTimer--;
 
 	if (Stance == ACT_Standing) //set pushbox values based on stance
 	{
@@ -806,7 +812,17 @@ void APlayerObject::Update()
 	HandleLanding();
 	Move();
 	HandleLanding();
+		
+	GameState->SetScreenBounds();
 
+	HandleBufferedState(PrimaryStateMachine);
+	HandleStateMachine(true, PrimaryStateMachine);
+	for (auto& StateMachine : SubStateMachines)
+	{
+		HandleBufferedState(StateMachine);
+		HandleStateMachine(false, StateMachine);
+	}
+	
 	Player->PrimaryStateMachine.Update();
 	for (auto& StateMachine : SubStateMachines)
 	{
@@ -828,14 +844,6 @@ void APlayerObject::Update()
 
 	if (PosY > GroundHeight) //set jumping if above ground
 		Stance = ACT_Jumping;
-
-	HandleStateMachine(true, PrimaryStateMachine);
-	HandleBufferedState(PrimaryStateMachine);
-	for (auto& StateMachine : SubStateMachines)
-	{
-		HandleStateMachine(false, StateMachine);
-		HandleBufferedState(StateMachine);
-	}
 	
 	GetBoxes();
 
@@ -844,6 +852,7 @@ void APlayerObject::Update()
 	if (CurrentHealth > MaxHealth) CurrentHealth = MaxHealth;
 
 	ActionTime++;
+	CallPostUpdateDebugBps();
 }
 
 void APlayerObject::UpdateNotBattle()
@@ -1520,6 +1529,9 @@ void APlayerObject::ThrowEnd()
 {
 	if (!Enemy) return;
 	Enemy->PlayerFlags &= ~PLF_IsThrowLock;
+	// Clear stun flag in case the throw did damage via a normal hitbox/hurtbox interaction.
+	// TODO: investigate how this will interact with comboable throws.
+	Enemy->PlayerFlags &= ~PLF_IsStunned;
 }
 
 void APlayerObject::SetThrowRange(int32 InThrowRange)
@@ -1798,6 +1810,13 @@ EBlockType APlayerObject::GetAttackBlockType() const
 	return HitCommon.BlockType;
 }
 
+#if WITH_EDITOR
+void APlayerObject::WriteInputCondition(FInputCondition& Condition)
+{
+	StoredInputBuffer.WriteInputCondition(Condition);
+}
+#endif
+
 bool APlayerObject::IsCorrectBlock(EBlockType BlockType)
 {
 	CallSubroutine(Subroutine_Cmn_IsCorrectBlock);
@@ -1820,11 +1839,7 @@ bool APlayerObject::IsCorrectBlock(EBlockType BlockType)
 		{
 			if (PrimaryStateMachine.StateNames.Contains(State_Universal_AirBlock))
 			{
-				Left.Method = EInputMethod::Once;
-				if (CheckInput(Left) && InstantBlockLockoutTimer == 0)
-				{
-					AddMeter(800);
-				}
+				Left.Method = EInputMethod::PositiveEdge;
 				return true;
 			}
 		}
@@ -1840,11 +1855,7 @@ bool APlayerObject::IsCorrectBlock(EBlockType BlockType)
 		{
 			if (PrimaryStateMachine.StateNames.Contains(State_Universal_CrouchBlock))
 			{
-				Input1.Method = EInputMethod::OnceStrict;
-				if (CheckInput(Input1) && InstantBlockLockoutTimer == 0)
-				{
-					AddMeter(800);
-				}
+				Input1.Method = EInputMethod::PositiveEdge;
 				return true;
 			}
 		}
@@ -1857,11 +1868,7 @@ bool APlayerObject::IsCorrectBlock(EBlockType BlockType)
 		{
 			if (PrimaryStateMachine.StateNames.Contains(State_Universal_StandBlock))
 			{
-				Input4.Method = EInputMethod::OnceStrict;
-				if (CheckInput(Input4) && InstantBlockLockoutTimer == 0)
-				{
-					AddMeter(800);
-				}
+				Input4.Method = EInputMethod::PositiveEdge;
 				return true;
 			}
 		}
@@ -2144,7 +2151,7 @@ bool APlayerObject::HandleStateCondition(EStateCondition StateCondition) const
 
 bool APlayerObject::FindChainCancelOption(const FGameplayTag Name, FStateMachine& StateMachine)
 {
-	if (AttackFlags & ATK_HasHit && AttackFlags & ATK_IsAttacking && CancelFlags & CNC_ChainCancelEnabled)
+	if (AttackFlags & ATK_HasHit && CancelFlags & CNC_ChainCancelEnabled)
 	{
 		if (CheckReverseBeat(Name, StateMachine))
 			return true;
@@ -2348,11 +2355,11 @@ void APlayerObject::HandleWallBounce()
 {
 	if (ReceivedHit.WallBounce.WallBounceInCornerOnly)
 	{
-		if (PlayerFlags & PLF_TouchingWall && 
-			GameState->BattleState.ScreenData.ScreenWorldCenterX + GameState->BattleState.ScreenData.ScreenWorldWidth / 2
+		if ((PlayerFlags & PLF_TouchingWall) && 
+			(GameState->BattleState.ScreenData.ScreenWorldCenterX + GameState->BattleState.ScreenData.ScreenWorldWidth / 2
 			>= GameState->BattleState.ScreenData.StageBoundsRight ||
 			GameState->BattleState.ScreenData.ScreenWorldCenterX - GameState->BattleState.ScreenData.ScreenWorldWidth / 2
-			<= GameState->BattleState.ScreenData.StageBoundsLeft)
+			<= GameState->BattleState.ScreenData.StageBoundsLeft))
 		{
 			if (ReceivedHit.WallBounce.WallBounceCount > 0)
 			{
@@ -2943,7 +2950,6 @@ void APlayerObject::PostStateChange()
 
 void APlayerObject::RoundInit(bool ResetHealth)
 {
-	OrthoBlendActive = 1;
 	StoredInputBuffer = FInputBuffer();
 	if (PlayerIndex == 0)
 	{
@@ -3199,13 +3205,9 @@ void APlayerObject::SaveForRollbackPlayer(unsigned char* Buffer) const
 	FMemory::Memcpy(Buffer, &PlayerSync, SizeOfPlayerObject);
 }
 
-TArray<uint8> APlayerObject::SaveForRollbackBP()
+void APlayerObject::SaveForRollbackBP(TArray<uint8>& Data)
 {
-	TArray<uint8> SaveData;
-	FObjectWriter Writer(SaveData);
-	Writer.ArIsSaveGame = true;
-	GetClass()->SerializeBin(Writer, this);
-	return SaveData;
+	UNightSkyBlueprintFunctionLibrary::SerializeBin(this, Data);
 }
 
 void APlayerObject::LoadForRollbackPlayer(const unsigned char* Buffer)
@@ -3213,12 +3215,9 @@ void APlayerObject::LoadForRollbackPlayer(const unsigned char* Buffer)
 	FMemory::Memcpy(&PlayerSync, Buffer, SizeOfPlayerObject);
 }
 
-void APlayerObject::LoadForRollbackBP(TArray<uint8> InBytes)
+int64 APlayerObject::LoadForRollbackBP(const TArrayView<const uint8>& InBytes)
 {
-	if (InBytes.Num() <= 1) return;
-	FObjectReader Reader(InBytes);
-	Reader.ArIsSaveGame = true;
-	GetClass()->SerializeBin(Reader, this);
+	return UNightSkyBlueprintFunctionLibrary::DeserializeBin(this, InBytes);
 }
 
 void APlayerObject::EnableState(int32 EnableType, FGameplayTag StateMachineName)
