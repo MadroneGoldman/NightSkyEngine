@@ -142,9 +142,9 @@ public:
 	void SetAnimationRollbackData();
 	void RollbackAnimations();
 
-	TArray<uint8> SaveForRollback();
-	void LoadForRollback(const TArray<uint8>& InBytes);
-	
+	void SaveForRollback(TArray<uint8>& Data);
+	uint64 LoadForRollback(const TArrayView<const uint8>& InBytes);
+
 	void UpdateAndNotifyP1Health(int index, float value);
 	void UpdateAndNotifyP2Health(int index, float value);
 	void UpdateAndNotifyP1RecoverableHealth(int index, float value);
