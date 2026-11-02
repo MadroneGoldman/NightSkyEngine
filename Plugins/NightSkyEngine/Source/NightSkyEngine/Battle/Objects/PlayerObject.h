@@ -12,6 +12,7 @@
 #include "NightSkyEngine/Data/SequenceData.h"
 #include "NightSkyEngine/Data/SoundData.h"
 #include "NightSkyEngine/Data/StateData.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "PlayerObject.generated.h"
 
 class ULinkActorData;
@@ -629,8 +630,10 @@ public:
 
 	UPROPERTY(EditAnywhere, Category=Defaults)
 	TMap<FGameplayTag, FGameplayTag> DamageReactionCels;
-	UPROPERTY(EditAnywhere, Category=Defaults)
-	bool bMirrorWhenFlip;
+	//UPROPERTY(EditAnywhere, Category=Defaults)
+	//bool bMirrorWhenFlip;
+	UPROPERTY(EditAnywhere, Category=Defaults)// delete this leave above
+	bool bMirrorAnimationsWhenFlip;
 
 	/*
 	 * States and subroutines
@@ -716,6 +719,8 @@ private:
 	bool FindAutoComboCancelOption(const FGameplayTag Name, FStateMachine& StateMachine);
 	//check if whiff cancel option exists
 	bool FindWhiffCancelOption(const FGameplayTag Name, FStateMachine& StateMachine);
+	//check if baroque cancel option exists  Madrone Change
+	bool FindBaroqueCancelOption(const UState* State, FStateMachine& StateMachine);
 	//check reverse beat
 	bool CheckReverseBeat(const FGameplayTag Name, FStateMachine& StateMachine);
 	//checks moves used in combo
@@ -774,7 +779,6 @@ public:
 	void RoundInit(bool ResetHealth);
 	void HandleFlipInput();
 	void HandleEndCombo();
-	
 	static uint32 FlipInput(uint32 Input);
 	
 	
@@ -803,6 +807,11 @@ public:
 	//add subroutine to state machine
 	UFUNCTION(BlueprintCallable)
 	void AddSubroutine(FGameplayTag Name, USubroutine* Subroutine, bool IsCommon);
+	//madrone change
+	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent)
+	USkeletalMeshComponent* GetBodyMesh(); 
+	UFUNCTION(BlueprintCallable)
+	void TakeDirectDamage(float Damage);
 	UFUNCTION(BlueprintCallable)
 	void SetHealth(int Value);
 	UFUNCTION(BlueprintCallable)
@@ -1052,6 +1061,8 @@ public:
 	void AddBattleObjectToStorage(ABattleObject* InActor, int Index);
 	UFUNCTION(BlueprintCallable)
 	APlayerObject* CallAssist(int AssistIndex, FGameplayTag AssistName);
+	UFUNCTION(BlueprintCallable) //Madrone Change
+	void AssistExit();
 	UFUNCTION(BlueprintCallable)
 	APlayerObject* SwitchMainPlayer(int NewTeamIndex, bool bForce = false, bool bEvenOnScreen = false);
 	UFUNCTION(BlueprintCallable)

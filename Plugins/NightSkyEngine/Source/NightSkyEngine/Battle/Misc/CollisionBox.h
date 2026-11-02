@@ -29,6 +29,14 @@ enum EBoxType
 	 * Custom. Set the Custom Box Type as well.
 	 */
 	BOX_Custom UMETA(DisplayName="Custom"),
+	/**
+	 * Special Hurtbox
+	 */
+	BOX_Special_Hurtbox UMETA(DisplayName="Special Hurtbox"),
+	/**
+	 * Special Hitbox
+	 */
+	BOX_Special_Hitbox UMETA(DisplayName="Special Hitbox"),
 };
 
 /**

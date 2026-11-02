@@ -874,6 +874,7 @@ public:
 	FName SocketName = {};
 	EObjType SocketObj = OBJ_Self;
 	FVector SocketOffset = FVector::ZeroVector;
+	FVector SocketRotationOffset = FVector::ZeroVector; //Madrone change
 
 	//material parameters
 	UPROPERTY(BlueprintReadWrite)
@@ -922,7 +923,12 @@ public:
 
 	UPROPERTY(BlueprintReadOnly)
 	int32 UpdateTime = 0;
-
+	
+	//UPROPERTY(EditAnywhere, Category=Defaults)
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category=Defaults)
+	bool bMirrorWhenFlip; //Madrone change was in player before
+	FName SocketNameLeft = {};//error if its with other socket data
+	
 	/*
 	 * Visual object transform
 	 */
@@ -1205,6 +1211,7 @@ public:
 	FName SocketName = {};
 	EObjType SocketObj = OBJ_Self;
 	FVector SocketOffset = FVector::ZeroVector;
+	FVector SocketRotationOffset = FVector::ZeroVector; //Madrone change
 
 	//material parameters
 	UPROPERTY(BlueprintReadWrite)
@@ -1253,7 +1260,11 @@ public:
 
 	UPROPERTY(BlueprintReadOnly)
 	int32 UpdateTime = 0;
-
+	
+	//UPROPERTY(EditAnywhere, Category=Defaults)
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category=Defaults)
+	bool bMirrorWhenFlip; //Madrone change was in player before
+	FName SocketNameLeft = {}; //error if its with other socket data
 	/*
 	 * Visual object transform
 	 */
@@ -1368,6 +1379,7 @@ public:
 	// update visuals
 	virtual void UpdateVisuals();
 	virtual void UpdateVisualsNoRollback();
+	
 	UFUNCTION(BlueprintImplementableEvent)
 	void UpdateVisuals_BP();
 
@@ -1379,7 +1391,7 @@ public:
 	/*
 	 * Blueprint callable functions.
 	 */
-
+	
 	UFUNCTION(BlueprintPure)
 	UAnimSequenceBase* GetAnimSequenceForPart(const FName Part) const;
 	UFUNCTION(BlueprintPure)
@@ -1550,7 +1562,7 @@ public:
 	void PlayCharaSound(FGameplayTag Name);
 	//attaches object to skeletal socket
 	UFUNCTION(BlueprintCallable)
-	void AttachToSocketOfObject(FName InSocketName, FVector Offset, EObjType ObjType);
+	void AttachToSocketOfObject(FName InSocketName, FVector Offset, FVector RotationOffset, EObjType ObjType);
 	//detaches object from skeletal socket
 	UFUNCTION(BlueprintCallable)
 	void DetachFromSocket();

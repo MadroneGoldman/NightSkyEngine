@@ -814,7 +814,8 @@ void ABattleObject::HandleCustomCollision_PreHit(ABattleObject* OtherObj)
 		PlayerIndex*/
 		&& OtherObj->AttackFlags & ATK_HitActive)
 	{
-		if (CheckBoxOverlap(OtherObj, BOX_Custom, FGameplayTag::EmptyTag, BOX_Custom, FGameplayTag::EmptyTag))
+		//if (CheckBoxOverlap(OtherObj, BOX_Custom, FGameplayTag::EmptyTag, BOX_Custom, FGameplayTag::EmptyTag))
+		if (CheckBoxOverlap(OtherObj, BOX_Special_Hitbox, FGameplayTag::EmptyTag, BOX_Special_Hurtbox, FGameplayTag::EmptyTag))
 		{
 			//TODO:: clean up some of the repeated code in these
 			if (IsPlayer && OtherObj->IsPlayer)
@@ -1666,7 +1667,11 @@ void ABattleObject::CollisionView()
 		}
 		Lines.Add(CurrentLines);
 		FLinearColor color;
-		if (Box.Type == BOX_Hit)
+		if (Box.Type == BOX_Special_Hitbox)
+			color = FLinearColor(1.f, 0.f, 0.5f, .25f);
+		if (Box.Type == BOX_Special_Hitbox)
+			color = FLinearColor(0.f, 0.f, 1.f, .25f);
+		else if (Box.Type == BOX_Hit)
 			color = FLinearColor(1.f, 0.f, 0.f, .25f);
 		else if (AttackFlags & ATK_IsAttacking)
 			color = FLinearColor(0.f, 1.f, 1.f, .25f);
@@ -1681,6 +1686,17 @@ void ABattleObject::CollisionView()
 			auto start = OffsetTransform.GetRotation().RotateVector(FVector( LineSet[0].X, 0,  LineSet[0].Y)) + OffsetTransform.GetLocation();
 			auto end = OffsetTransform.GetRotation().RotateVector(FVector( LineSet[1].X, 0,  LineSet[1].Y)) + OffsetTransform.GetLocation();
 			DrawDebugLine(GetWorld(), start, end, color.ToFColor(false),false, 1 / 60, 255, 2.f);
+
+			if ( Box.CustomType.IsValid())
+			{
+				FString customtypestring = Box.CustomType.ToString();
+				for (int i = 0; i < customtypestring.Len() % 3; i++)
+				{
+					customtypestring.InsertAt(0, "\n"); 
+				}
+				DrawDebugString(GetWorld(), start, customtypestring, nullptr, color.ToFColor(true), 1/60, true);
+			}
+
 		}
 	}
 	TArray<FVector2D> CurrentCorners;
@@ -1704,6 +1720,7 @@ void ABattleObject::CollisionView()
 		auto end =  OffsetTransform.GetRotation().RotateVector(FVector( LineSet[1].X, 0,  LineSet[1].Y)) + OffsetTransform.GetLocation();
 		DrawDebugLine(GetWorld(), start, end, color.ToFColor(false),false, 1 / 60, 255, 2.f);
 	}
+	
 }
 
 void ABattleObject::SaveForRollback(unsigned char* Buffer) const
@@ -1846,14 +1863,33 @@ void ABattleObject::UpdateVisualsNoRollback()
 	FRotator FlipRotation = FRotator::ZeroRotator;
 	if (Direction == DIR_Left)
 	{
-		if (Player->bMirrorWhenFlip && IsPlayer)
+		if ( IsPlayer ) // TODO:: Something like this if special characters are invertef not mirrored
 		{
-			FlipRotation = FRotator(0, 180, 0);
-			SetActorScale3D(FVector(1, 1, 1) * ObjectScale);
-			if (!GameState) SetActorRotation(FlipRotation);
+			if (Player->bMirrorWhenFlip) // flip character around like a 3d fighter madrone changes here
+			{
+				FlipRotation = FRotator(0, 180, 0);
+				SetActorScale3D(FVector(1, 1, 1) * ObjectScale);
+				if (!GameState) SetActorRotation(FlipRotation);
+			}
+			else if (!Player->bMirrorAnimationsWhenFlip) //invert character to mirror like a 2d sprite (physics assets wont work when inverted)
+			{
+				SetActorScale3D(FVector(-1, 1, 1) * ObjectScale);
+			}
+			// otherwise mirror animations (bMirrorWhenFlip==false && bMirrorAnimationsWhenFlip==true)
 		}
-		else
-			SetActorScale3D(FVector(-1, 1, 1) * ObjectScale);
+		else 
+		{
+			if (bMirrorWhenFlip) // flip character around like a 3d fighter madrone changes here
+			{
+				FlipRotation = FRotator(0, 180, 0);
+				SetActorScale3D(FVector(1, 1, 1) * ObjectScale);
+				if (!GameState) SetActorRotation(FlipRotation);
+			}
+			else
+			{
+				SetActorScale3D(FVector(-1, 1, 1) * ObjectScale);
+			}
+		}
 	}
 	else
 	{
@@ -1878,20 +1914,59 @@ void ABattleObject::UpdateVisualsNoRollback()
 		}
 		else
 		{
+			FName UsedSocketName  = SocketName;
 			FVector FinalSocketOffset = SocketOffset;
+			FVector FinalSocketRotationOffset = SocketRotationOffset;
 			if (Direction != DIR_Right)
+				UsedSocketName  = SocketNameLeft;
 				FinalSocketOffset.Y = -SocketOffset.Y;
+				//FinalSocketRotationOffset.Y = SocketRotationOffset.Y + 180.0f; // add y +180
+				FinalSocketRotationOffset.Y = SocketRotationOffset.Y * -1.0f;
 			const auto Obj = GetBattleObject(SocketObj);
 			TArray<USkeletalMeshComponent*> SocketSkeletalMeshComponents;
 			Obj->GetComponents(USkeletalMeshComponent::StaticClass(), SocketSkeletalMeshComponents);
 			for (const auto Component : SocketSkeletalMeshComponents)
 			{
-				if (!Component->DoesSocketExist(SocketName)) continue;
+				if (!Component->DoesSocketExist(UsedSocketName)) continue;
 				FVector SocketLocation;
 				FRotator SocketRotation;
-				Component->GetSocketWorldLocationAndRotation(SocketName, SocketLocation, SocketRotation);
-				SetActorLocation(FinalSocketOffset + SocketLocation);
-				SetActorRotation(SocketRotation);
+				
+				Component->GetSocketWorldLocationAndRotation(UsedSocketName, SocketLocation, SocketRotation);
+				
+
+				FTransform SocketTransform = Component->GetSocketTransform(UsedSocketName, RTS_Component);
+				
+				FTransform FinalLocalTransform = FTransform::Identity;
+				FinalLocalTransform.SetLocation(SocketTransform.TransformPosition(SocketOffset));
+				
+				FQuat OffsetQuat = FQuat::MakeFromEuler(SocketRotationOffset);
+				FinalLocalTransform.SetRotation(SocketTransform.GetRotation() * OffsetQuat);
+				
+				if (Direction != DIR_Right)
+				{
+					FPlane MirrorPlane(FVector(0.0f, 1.0f, 0.0f), 0.0f);
+					FinalLocalTransform.SetLocation(SocketTransform.TransformPosition(SocketOffset).MirrorByPlane(MirrorPlane));	
+					
+					///////////////
+					// 4. Mirror Rotation (Convert to FMatrix, mirror it, convert back)
+					/*
+					FMatrix SourceMatrix = FRotationMatrix(SocketTransform.GetRotation() * OffsetQuat);
+					FMatrix MirrorMatrix = FManipulationMatrix::Mirror(MirrorPlane.GetNormal());
+    
+					// Combine matrices to reflect the orientation axes
+					FMatrix MirroredMatrix = SourceMatrix * MirrorMatrix;
+					FRotator MirroredRot = MirroredMatrix.Rotator();
+					*/
+					////////////////
+					FQuat MirOffsetQuat = FQuat::MakeFromEuler(SocketRotationOffset);
+					FinalLocalTransform.SetRotation(SocketTransform.GetRotation() * MirOffsetQuat);
+				}
+				
+				FTransform ComponentWorldTransform = Component->GetComponentTransform();
+				FTransform SocketWorldTransform = FinalLocalTransform * ComponentWorldTransform;
+				
+				SetActorLocation(SocketWorldTransform.GetLocation());
+				SetActorRotation(SocketWorldTransform.Rotator());
 			}
 		}
 	}
@@ -2832,6 +2907,18 @@ void ABattleObject::DeactivateObject()
 			break;
 		}
 	}
+	
+	//Madrone change
+	if (IsValid(LinkedParticle))
+	{
+		LinkedParticle->SetVisibility(false);
+		LinkedParticle->Deactivate();
+	}
+	//Madrone change
+	if (PositionLinkObj != nullptr)
+	{
+		PositionLinkObj->DeactivateObject();	
+	}
 
 	// Wait until the next frame to complete
 	MiscFlags |= MISC_DeactivateOnNextUpdate;
@@ -2980,9 +3067,12 @@ bool ABattleObject::CheckBoxOverlap(ABattleObject* OtherObj, const EBoxType Self
 				continue;
 			if (OtherBox.Type == BOX_Custom && OtherBox.CustomType != Box.CustomType)
 				continue;
+			
 			//Madrone change  Box.CustomType
 			//if (OtherBox.Type == BOX_Custom && OtherBox.CustomType != OtherCustomType)
 			//	continue;
+			if (OtherBox.Type == BOX_Special_Hurtbox && OtherBox.CustomType != Box.CustomType)
+				continue;
 
 			int32 OtherP1[2] = {-OtherBox.SizeX / 2, -OtherBox.SizeY / 2};
 			int32 OtherP2[2] = {-OtherBox.SizeX / 2, OtherBox.SizeY / 2};
@@ -3426,16 +3516,34 @@ void ABattleObject::PlayCharaSound(FGameplayTag Name)
 	}
 }
 
-void ABattleObject::AttachToSocketOfObject(FName InSocketName, FVector Offset, EObjType ObjType)
+void ABattleObject::AttachToSocketOfObject(FName InSocketName, FVector Offset, FVector RotationOffset, EObjType ObjType)
 {
 	SocketName = InSocketName;
 	SocketObj = ObjType;
 	SocketOffset = Offset;
+	SocketRotationOffset = RotationOffset;
+	
+	//Madrone change make left socket name
+	FString MutableString = InSocketName.ToString();
+	
+	if (MutableString.Contains("_l"))
+	{
+		MutableString.ReplaceInline(TEXT("l"), TEXT("r"), ESearchCase::CaseSensitive);
+		MutableString.ReplaceInline(TEXT("L"), TEXT("R"), ESearchCase::CaseSensitive);
+	}
+	else
+	{
+		MutableString.ReplaceInline(TEXT("r"), TEXT("l"), ESearchCase::CaseSensitive);
+		MutableString.ReplaceInline(TEXT("R"), TEXT("L"), ESearchCase::CaseSensitive);
+	}
+	
+	SocketNameLeft = FName(*MutableString);
 }
 
 void ABattleObject::DetachFromSocket()
 {
 	SocketName = FName();
+	SocketNameLeft = FName();
 	SocketObj = OBJ_Self;
 	SocketOffset = FVector::ZeroVector;
 }

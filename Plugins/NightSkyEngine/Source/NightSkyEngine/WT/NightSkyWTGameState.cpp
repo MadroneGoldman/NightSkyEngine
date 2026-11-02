@@ -125,6 +125,7 @@ void ANightSkyWTGameState::Init(APlayerObject* P1, APlayerObject* P2,APlayerObje
 	
 	UpdateCamera();
 	
+	OnBattleStartDelegate.Broadcast();
 	MatchInitWt(TeamCount1, TeamCount2);
 	HUDInit();
 }

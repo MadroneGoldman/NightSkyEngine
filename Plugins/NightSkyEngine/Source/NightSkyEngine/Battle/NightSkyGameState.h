@@ -171,9 +171,9 @@ struct FBattleState
 	int32 TimeUntilRoundStart = 0;
 
 	UPROPERTY(EditAnywhere)
-	int32 TagCooldown = 300;
+	int32 TagCooldown = 300; //Not used?
 	UPROPERTY(EditAnywhere)
-	int32 AssistCooldown = 180;
+	int32 AssistCooldown = 180;  //Not used?
 	
 	UPROPERTY(EditAnywhere)
 	int32 RoundStartPos = 297500;

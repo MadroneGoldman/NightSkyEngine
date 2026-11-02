@@ -64,6 +64,10 @@
 		{
 			"Name": "StateTree",
 			"Enabled": true
+		},
+		{
+			"Name": "ALS",
+			"Enabled": true
 		}
 	]
 }

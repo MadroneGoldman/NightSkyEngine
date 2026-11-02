@@ -8,6 +8,17 @@
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(NightSkyBattleWidget)
 
+void UNightSkyBattleWidget::SetMainPlayerIndex(bool IsP1, int PlayerIndex)
+{
+	
+}
+
+void UNightSkyBattleWidget::RoundInitImplementation(int P1TeamSize, int P2TeamSize)
+{
+	RoundInit(P1TeamSize, P2TeamSize);
+	PlayRoundInitAnim();
+}
+
 void UNightSkyBattleWidget::PlayStandardAnimations()
 {
 	PlayHealthAnim();
@@ -56,4 +67,44 @@ void UNightSkyBattleWidget::LoadForRollback(const TArray<uint8>& InBytes)
 	FObjectReader Reader(InBytes);
 	Reader.ArIsSaveGame = true;
 	GetClass()->SerializeBin(Reader, this);
+}
+
+void UNightSkyBattleWidget::UpdateAndNotifyP1Health(int index, float value)
+{
+	if (P1Health[index] != value)
+	{
+		P1Health[index] = value;
+		OnP1HealthChangedDelegate.Broadcast(index, value);
+		//BroadcastFieldValueChanged(FFieldNotificationClassDescriptor::P1Health);
+	}
+}
+
+void UNightSkyBattleWidget::UpdateAndNotifyP2Health(int index, float value)
+{
+	if (P2Health[index] != value)
+	{
+		P2Health[index] = value;
+		OnP2HealthChangedDelegate.Broadcast(index, value);
+		//BroadcastFieldValueChanged(FFieldNotificationClassDescriptor::P2Health);
+	}
+}
+
+void UNightSkyBattleWidget::UpdateAndNotifyP1RecoverableHealth(int index, float value)
+{
+	if (P1RecoverableHealth[index] != value)
+	{
+		P1RecoverableHealth[index] = value;
+		OnP1RecoverableHealthChangedDelegate.Broadcast(index, value);
+		//BroadcastFieldValueChanged(FFieldNotificationClassDescriptor::P1RecoverableHealth);
+	}
+}
+
+void UNightSkyBattleWidget::UpdateAndNotifyP2RecoverableHealth(int index, float value)
+{
+	if (P2RecoverableHealth[index] != value)
+	{
+		P2RecoverableHealth[index] = value;
+		OnP2RecoverableHealthChangedDelegate.Broadcast(index, value);
+		//BroadcastFieldValueChanged(FFieldNotificationClassDescriptor::P2RecoverableHealth);
+	}
 }

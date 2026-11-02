@@ -22,6 +22,8 @@ public class NightSkyEngine : ModuleRules
 			"UMG",
 			"Niagara",
 			"Paper2D",
+			"Slate",
+			"SlateCore",
 		});
 		
 		PrivateDependencyModuleNames.AddRange(new[]
@@ -34,7 +36,7 @@ public class NightSkyEngine : ModuleRules
 			"GameplayTags",
 			"CinematicCamera",
 			"StateTreeModule", 
-			"DeveloperSettings",
+			"DeveloperSettings", "ALS", "ALSCamera",
 		});
 
 		// Uncomment if you are using Slate UI

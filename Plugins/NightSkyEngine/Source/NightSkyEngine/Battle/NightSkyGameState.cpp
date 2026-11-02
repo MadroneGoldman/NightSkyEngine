@@ -175,6 +175,7 @@ void ANightSkyGameState::Init()
 			NewP1Assist->InitPlayer();
 			NewP1Assist->GameState = this;
 			NewP1Assist->AddTickPrerequisiteActor(this);
+			NewP1Assist->IsActive = false;
 		}
 		if (P2AssistData != nullptr &&  P2AssistData->PlayerClass != nullptr)
 		{
@@ -188,6 +189,7 @@ void ANightSkyGameState::Init()
 			NewP2Assist->InitPlayer();
 			NewP2Assist->GameState = this;
 			NewP2Assist->AddTickPrerequisiteActor(this);
+			NewP2Assist->IsActive = false;
 		}
 		
 		
@@ -600,7 +602,8 @@ void ANightSkyGameState::UpdateGameState(int32 Input1, int32 Input2, bool bShoul
 				BattleState.CurrentIntroSide = INT_None;
 				BattleState.BattlePhase = EBattlePhase::Battle;
 				BattleHudVisibility(true);
-				BattleHudActor->BottomWidget->PlayRoundInitAnim();
+				BattleHudActor->BottomWidget->RoundInitImplementation(BattleState.TeamData[0].TeamCount, BattleState.TeamData[1].TeamCount); //Nick change
+				BattleHudActor->TopWidget->RoundInitImplementation(BattleState.TeamData[0].TeamCount, BattleState.TeamData[1].TeamCount);
 				BattleState.FadeTimer = BattleState.MaxFadeTimer;
 			}
 		}
@@ -1010,7 +1013,7 @@ void ANightSkyGameState::HandleHitCollision() const
 		{
 			if (j == BattleState.ActiveObjectCount)
 				break;
-			if ( (SortedObjects[i]->Player->PlayerIndex != SortedObjects[j]->Player->PlayerIndex || (SortedObjects[i]->bIsNeutral && SortedObjects[i]->GetUniqueID() != SortedObjects[j]->GetUniqueID() ))
+			if ( (SortedObjects[i]->Player->PlayerIndex != SortedObjects[j]->Player->PlayerIndex || (SortedObjects[i]->bIsNeutral && (SortedObjects[i] != SortedObjects[j]) ))
 				&& SortedObjects[i]->Player->PlayerFlags & PLF_IsOnScreen
 				&& SortedObjects[j]->Player->PlayerFlags & PLF_IsOnScreen)
 			{
@@ -1163,7 +1166,8 @@ void ANightSkyGameState::NextRoundTransition(bool bIsP1)
 			if (BattleState.FadeTimer <= 0)
 			{
 				RoundInit();
-				BattleHudActor->BottomWidget->PlayRoundInitAnim();
+				BattleHudActor->BottomWidget->RoundInitImplementation(BattleState.TeamData[0].TeamCount, BattleState.TeamData[1].TeamCount); //Nick change
+				BattleHudActor->TopWidget->RoundInitImplementation(BattleState.TeamData[0].TeamCount, BattleState.TeamData[1].TeamCount);
 			}
 		}
 	}
@@ -1648,19 +1652,43 @@ void ANightSkyGameState::UpdateHUD()
 	{
 		if (BattleHudActor->TopWidget != nullptr)
 		{
+			//Madrone change
+			if (BattleHudActor->TopWidget->P1Cooldowns.IsEmpty())
+				BattleHudActor->TopWidget->P1Cooldowns.SetNum(
+					BattleState.TeamData[0].TeamCount);
+			if (BattleHudActor->TopWidget->P2Cooldowns.IsEmpty())
+				BattleHudActor->TopWidget->P2Cooldowns.SetNum(
+					BattleState.TeamData[1].TeamCount);
+			
 			for (int i = 0; i < BattleState.TeamData[0].TeamCount; i++)
 			{
-				BattleHudActor->TopWidget->P1Health[i] = static_cast<float>(GetTeam(true)[i]->CurrentHealth) /
-					static_cast<float>(GetTeam(true)[i]->MaxHealth);
-				BattleHudActor->TopWidget->P1RecoverableHealth[i] = static_cast<float>(GetTeam(true)[i]->CurrentHealth +
-					GetTeam(true)[i]->RecoverableHealth) / static_cast<float>(GetTeam(true)[i]->MaxHealth);
+				//Tag cooldown timers
+				BattleHudActor->TopWidget->P1Cooldowns[i] = BattleState.TeamData[0].CooldownTimer[i];
+				
+				//BattleHudActor->TopWidget->P1Health[i] = static_cast<float>(GetTeam(true)[i]->CurrentHealth) /
+				//	static_cast<float>(GetTeam(true)[i]->MaxHealth);
+				BattleHudActor->TopWidget->UpdateAndNotifyP1Health(i, static_cast<float>(GetTeam(true)[i]->CurrentHealth) /
+					static_cast<float>(GetTeam(true)[i]->MaxHealth));
+				//BattleHudActor->TopWidget->P1RecoverableHealth[i] = static_cast<float>(GetTeam(true)[i]->CurrentHealth +
+					//GetTeam(true)[i]->RecoverableHealth) / static_cast<float>(GetTeam(true)[i]->MaxHealth);
+				BattleHudActor->TopWidget->UpdateAndNotifyP1RecoverableHealth(i, static_cast<float>(GetTeam(true)[i]->CurrentHealth +
+					GetTeam(true)[i]->RecoverableHealth) / static_cast<float>(GetTeam(true)[i]->MaxHealth));
+				
 			}
 			for (int i = 0; i < BattleState.TeamData[1].TeamCount; i++)
 			{
-				BattleHudActor->TopWidget->P2Health[i] = static_cast<float>(GetTeam(false)[i]->CurrentHealth) /
-					static_cast<float>(GetTeam(false)[i]->MaxHealth);
-				BattleHudActor->TopWidget->P2RecoverableHealth[i] = static_cast<float>(GetTeam(false)[i]->CurrentHealth
-					+ GetTeam(false)[i]->RecoverableHealth) / static_cast<float>(GetTeam(false)[i]->MaxHealth);
+				//Tag cooldown timers
+				BattleHudActor->TopWidget->P2Cooldowns[i] = BattleState.TeamData[0].CooldownTimer[i];
+				
+				//BattleHudActor->TopWidget->P2Health[i] = static_cast<float>(GetTeam(false)[i]->CurrentHealth) /
+				//	static_cast<float>(GetTeam(false)[i]->MaxHealth);
+				//BattleHudActor->TopWidget->P2RecoverableHealth[i] = static_cast<float>(GetTeam(false)[i]->CurrentHealth
+				//	+ GetTeam(false)[i]->RecoverableHealth) / static_cast<float>(GetTeam(false)[i]->MaxHealth);
+				
+				BattleHudActor->TopWidget->UpdateAndNotifyP2Health(i, static_cast<float>(GetTeam(false)[i]->CurrentHealth) /
+					static_cast<float>(GetTeam(false)[i]->MaxHealth));
+				BattleHudActor->TopWidget->UpdateAndNotifyP2RecoverableHealth(i, static_cast<float>(GetTeam(false)[i]->CurrentHealth +
+					GetTeam(false)[i]->RecoverableHealth) / static_cast<float>(GetTeam(false)[i]->MaxHealth));
 			}
 			BattleHudActor->TopWidget->P1RoundsWon = BattleState.P1RoundsWon;
 			BattleHudActor->TopWidget->P2RoundsWon = BattleState.P2RoundsWon;
@@ -1812,6 +1840,7 @@ APlayerObject* ANightSkyGameState::SwitchMainPlayer(APlayerObject* InPlayer, con
 	BattleState.MainPlayer[!IsP1] = NewPlayer;
 	SetDrawPriorityFront(NewPlayer);
 	BattleHudActor->TopWidget->PlayTagAnim(IsP1);
+	BattleHudActor->TopWidget->SetMainPlayerIndex(IsP1, NewPlayer->PlayerIndex);
 	return NewPlayer;
 }
 
@@ -1852,7 +1881,14 @@ APlayerObject* ANightSkyGameState::CallAssist(const bool IsP1, const int AssistI
 	NewPlayer->PosX = GetMainPlayer(IsP1)->PosX;
 	NewPlayer->FaceOpponent();
 	NewPlayer->JumpToStatePrimary(AssistName);
+	NewPlayer->IsActive = true;
 	SetDrawPriorityBack(NewPlayer);
+	//Zoom out screen
+	//BattleState.ScreenData.TargetObjects.Add(NewPlayer);
+	BattleState.ScreenData.DefaultMaxWidth += 150;
+	BattleState.ScreenData.DefaultWidth += 150;
+	
+	BattleHudActor->TopWidget->PlayAssistAnim(IsP1);
 	return NewPlayer;
 }
 

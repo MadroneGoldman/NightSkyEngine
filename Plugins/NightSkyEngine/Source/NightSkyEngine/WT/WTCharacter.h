@@ -3,16 +3,21 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/Character.h"
+#include "AlsCharacter.h"
 #include "NightSkyEngine/Battle/NightSkyGameState.h"
 #include "NightSkyEngine/Data/PrimaryCharaData.h"
 #include "WTCharacter.generated.h"
 
+struct FInputActionValue;
+class UAlsCameraComponent;
+class UInputMappingContext;
+class UInputAction;
+
 class ANightSkyWTGameState;
 class APlayerObject;
 
-UCLASS()
-class NIGHTSKYENGINE_API AWTCharacter : public ACharacter
+UCLASS(AutoExpandCategories = ("Settings|Als Character Example"))
+class NIGHTSKYENGINE_API AWTCharacter : public AAlsCharacter
 {
 	GENERATED_BODY()
 
@@ -23,26 +28,35 @@ public:
 	UPROPERTY(BlueprintReadOnly)
 	ANightSkyWTGameState* GameState;
 	
-	UPROPERTY(EditAnywhere)
-	TSubclassOf<APlayerObject> BattlePlayerClass;
+//	UPROPERTY(EditAnywhere)
+//	TSubclassOf<APlayerObject> BattlePlayerClass;
 	
 	UPROPERTY(BlueprintReadOnly)
 	APlayerObject* BattlePlayer;
 
 	UPROPERTY(EditAnywhere)
-	UPrimaryCharaData* CharaData;
+	TSoftObjectPtr<UPrimaryCharaData> CharaData;
+	
+	UPROPERTY(BlueprintReadWrite, EditAnywhere) //TODO: maybe delete
+	TSoftObjectPtr<UPrimaryCharaData>  TeammateCharaData;
 	
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	UPrimaryCharaData* TeammateCharaData;
+	TArray<TSoftObjectPtr<UPrimaryCharaData> > Allies;
+	
+	//UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	//TMap<FName, TSoftObjectPtr<UPrimaryCharaData>> AlliesMap;
 	
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	TArray<UPrimaryCharaData*> Allies;
+	TSet<FName> AlliesSet;
+	
+	UPROPERTY(BlueprintReadOnly, EditAnywhere)
+	FName TagAllyName;
 	
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	int32 CurrentTagAlly = 0;
+	int32 CurrentTagAlly = -1;
 	
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	int32 CurrentAssistAlly = 0;
+	int32 CurrentAssistAlly = -1;
 	
 	UPROPERTY(EditAnywhere)
 	bool bIsNPC = false;
@@ -60,12 +74,18 @@ public:
 	// Called to bind functionality to input
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
-	UFUNCTION(BlueprintCallable)
-	void StartBattle(AWTCharacter* Opponent);
+	UFUNCTION(BlueprintCallable) //Player initiates fight
+	virtual void StartBattle(AWTCharacter* Opponent);
 
-	UFUNCTION()
-	void EndBattle();
-
+	UFUNCTION() //Response to gamestate delegate
+	virtual void BattleStarted();
+	
+	UFUNCTION()  //Response to gamestate delegate
+	virtual void EndBattle();
+	
+	UFUNCTION(BlueprintImplementableEvent)
+	void Battle_Started_BP();
+	
 	UFUNCTION(BlueprintImplementableEvent)
 	void EndBattle_BP(EWinSide WinSide);
 	
@@ -74,4 +94,5 @@ public:
 	
 	UFUNCTION(BlueprintCallable)
 	void AddAlly(UPrimaryCharaData* NewAllyData);
+
 };

@@ -57,6 +57,7 @@ enum EEnableFlags
 	ENB_Burst = 0x8000 UMETA(DisplayName = "Burst"),
 	ENB_Tag = 0x10000 UMETA(DisplayName = "Tag"),
 	ENB_Assist = 0x20000 UMETA(DisplayName = "Assist"),
+	ENB_Baroque = 0x40000 UMETA(DisplayName = "Baroque Cancel"),
 };
 
 ENUM_CLASS_FLAGS(EEnableFlags);

@@ -9,6 +9,9 @@
 UDELEGATE()
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnBattleEndDelegate);
 
+UDELEGATE()
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnBattleStartDelegate);  //madrone change
+
 UCLASS()
 class NIGHTSKYENGINE_API ANightSkyWTGameState : public ANightSkyGameState
 {
@@ -26,6 +29,9 @@ public:
 
 	UPROPERTY()
 	FOnBattleEndDelegate OnBattleEndDelegate;
+	
+	UPROPERTY()
+	FOnBattleStartDelegate OnBattleStartDelegate; //madrone change
 	
 protected:
 	// Called when the game starts or when spawned

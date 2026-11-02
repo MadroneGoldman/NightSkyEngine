@@ -381,7 +381,8 @@ bool APlayerObject::HandleStateTransition(int32 StateIndex, bool Buffer, FStateM
 	if (FindChainCancelOption(StateMachine.States[StateIndex]->Name, StateMachine)
 		|| FindAutoComboCancelOption(StateMachine.States[StateIndex]->Name, StateMachine)
 		|| FindWhiffCancelOption(StateMachine.States[StateIndex]->Name, StateMachine)
-		|| CancelFlags & CNC_CancelIntoSelf) //if cancel option, allow resetting state
+		|| CancelFlags & CNC_CancelIntoSelf
+		|| FindBaroqueCancelOption(StateMachine.States[StateIndex], StateMachine) ) //if cancel option, allow resetting state
 	{
 		if (Buffer)
 		{
@@ -943,8 +944,12 @@ void APlayerObject::HandleHitAction(EHitAction HACT)
 		FinalDamage = FinalDamage * OtgProration / 100;
 
 	CurrentHealth -= FinalDamage;
-
-	GameState->BattleHudActor->TopWidget->PlayTookDamageAnim(!TeamIndex);
+	
+	//Nick change
+	if (PlayerFlags & PLF_ReceivedCounterHit)
+	{
+		GameState->BattleHudActor->TopWidget->PlayTookDamageAnim(!TeamIndex);
+	}
 
 	if (CurrentHealth > 0)
 	{
@@ -1684,6 +1689,17 @@ APlayerObject* APlayerObject::CallAssist(const int AssistIndex, const FGameplayT
 	return GameState->CallAssist(PlayerIndex == 0, AssistIndex, AssistName);
 }
 
+void APlayerObject::AssistExit() //madrone change
+{
+	if (!GameState) return;
+	//GameState->BattleState.ScreenData.TargetObjects.Remove(this);
+	IsActive = false;
+	SetActorHiddenInGame(true);
+	//TODO:: Zoom in screen
+	GameState->BattleState.ScreenData.DefaultMaxWidth -= 150;
+	GameState->BattleState.ScreenData.DefaultWidth -= 150;
+}
+
 APlayerObject* APlayerObject::SwitchMainPlayer(int NewTeamIndex, bool bForce, bool bEvenOnScreen)
 {
 	if (!GameState) return nullptr;
@@ -2227,6 +2243,15 @@ bool APlayerObject::FindWhiffCancelOption(const FGameplayTag Name, FStateMachine
 	return false;
 }
 
+bool APlayerObject::FindBaroqueCancelOption(const UState* State, FStateMachine& StateMachine)
+{
+	if (State->StateType == EStateType::BaroqueCancel)
+	{
+		return true;
+	}
+	return false;
+}
+
 bool APlayerObject::CheckReverseBeat(const FGameplayTag Name, FStateMachine& StateMachine)
 {
 	if (!CanReverseBeat || (CancelFlags & CNC_EnableReverseBeat) == 0)
@@ -2577,6 +2602,12 @@ void APlayerObject::AddSubroutine(FGameplayTag Name, USubroutine* Subroutine, bo
 	}
 }
 
+void APlayerObject::TakeDirectDamage(float Damage) //madrone change
+{
+	CurrentHealth -= Damage;
+	GameState->BattleHudActor->TopWidget->PlayTookDamageAnim(!TeamIndex);
+}
+
 void APlayerObject::SetHealth(int Value)
 {
 	CurrentHealth = Value;
@@ -2817,6 +2848,10 @@ bool APlayerObject::CheckStateEnabled(EStateType StateType, FGameplayTag CustomS
 		if (GetEnableFlags(StateMachineName) & ENB_Assist)
 			return true;
 		break;
+	case EStateType::BaroqueCancel:
+		//if (GetEnableFlags(StateMachineName) & ENB_Baroque) //Madrone change
+		return true;
+		//break;
 	case EStateType::Custom:
 		if (GetStateMachine(StateMachineName).EnabledCustomStateTypes.Contains(CustomStateType))
 			return true;
@@ -3320,6 +3355,7 @@ void APlayerObject::EnableAll(FGameplayTag StateMachineName)
 	EnableState(ENB_Burst, StateMachineName);
 	EnableState(ENB_Tag, StateMachineName);
 	EnableState(ENB_Assist, StateMachineName);
+	EnableState(ENB_Baroque, StateMachineName);
 }
 
 void APlayerObject::DisableAll(FGameplayTag StateMachineName)
@@ -3342,6 +3378,7 @@ void APlayerObject::DisableAll(FGameplayTag StateMachineName)
 	DisableState(ENB_Burst, StateMachineName);
 	DisableState(ENB_Tag, StateMachineName);
 	DisableState(ENB_Assist, StateMachineName);
+	DisableState(ENB_Baroque, StateMachineName);
 }
 
 bool APlayerObject::CheckInput(const FInputCondition& Input)
