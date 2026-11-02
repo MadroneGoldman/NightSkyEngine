@@ -109,3 +109,6 @@ Source/*
 NightSkyEngine.uproject
 LICENSE
 README.md
+
+# Prebuilt plugin binaries (NickWTChanges builds its own from modified source)
+Plugins/*/Binaries/*
