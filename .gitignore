@@ -118,3 +118,4 @@ Plugins/*/Binaries/*
 # "link_plugins.ps1 -Unlink" or "cmd /c rmdir"; never rm -rf, Remove-Item -Recurse or git clean -x.
 Plugins/NarrativePro/
 Plugins/WitchTools/
+Plugins/WitchToolsBattle/
