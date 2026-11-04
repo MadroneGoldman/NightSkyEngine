@@ -62,7 +62,12 @@ void ABattleObject::Move()
 	}
 
 	// Root motion
-	if (const auto BodyAnimUserData = GetAnimSequenceUserData("Body"))
+	// Only take the root motion path (which skips normal speed/gravity integration below) when the body
+	// animation actually contains root motion. Previously any animation with NightSkyAnimSequenceUserData
+	// attached took this path and returned early, even in-place animations whose root translation is all
+	// zero, so walk/jump states that rely on SpeedX/SpeedY did not move the character.
+	const auto BodyAnimUserData = GetAnimSequenceUserData("Body");
+	if (BodyAnimUserData && BodyAnimUserData->HasRootMotion())
 	{
 		if (!MaxCelTime) return;
 		
@@ -82,7 +87,13 @@ void ABattleObject::Move()
 		if (Player->PlayerFlags & PLF_IsThrowLock)
 			return;
 		Player->SetHitValuesOverTime();
-		return;
+		// This return was added in the root motion change
+		// (https://github.com/WistfulHopes/NightSkyEngine/commit/71a7350694ee37b12517601d4e9a516de5b30bab).
+		// It runs for every player on every frame, so players never reach the speed, gravity, inertia,
+		// pushback and position integration below. Walk animations played but PosX never changed, and
+		// jumps never applied SpeedY/gravity, so players never landed and stayed in the falling loop.
+		// Before that commit this block had no return and fell through to the code below.
+		// return;
 	}
 
 	SpeedX = SpeedX * SpeedXRatePerFrame / 100;
