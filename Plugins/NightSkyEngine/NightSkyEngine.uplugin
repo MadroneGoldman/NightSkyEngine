@@ -66,6 +66,10 @@
 			"Enabled": true
 		},
 		{
+			"Name": "GameplayStateTree",
+			"Enabled": true
+		},
+		{
 			"Name": "ALS",
 			"Enabled": true
 		}
