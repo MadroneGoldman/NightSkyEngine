@@ -113,6 +113,10 @@ public:
 	UFUNCTION(BlueprintPure)
 	FAnimVector GetRootTranslationAtTime(int64 Time) const;
 
+	// True if any frame of the cached root translation is non-zero. In-place animations return false.
+	UFUNCTION(BlueprintPure)
+	bool HasRootMotion() const;
+
 	UFUNCTION(BlueprintPure)
 	FAnimTransform GetCachedBoneTransformAtTime(FName BoneName, int32 Time, bool bRelativeToRoot) const;
     

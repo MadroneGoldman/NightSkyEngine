@@ -131,8 +131,22 @@ FAnimVector UNightSkyAnimSequenceUserData::GetRootTranslationAtTime(int64 Time) 
 	const auto PrevFrame = Time / 60;
 	const auto NextFrame = Time / 60 + 1;
 
+	// Time is in 1/60ths of an animation frame, so (Time - RoundedToFrame * 60) is the progress through the
+	// current frame, in [0, 60). LerpAnimVector expects an alpha in [0, 1000]. The old expression
+	// "(Time - RoundedToFrame * 60) / (60 * FrameCount) * 1000" divided by FrameCount as well, and divided
+	// before multiplying. Integer division made it 0 almost always, so root motion never interpolated
+	// between frames. Multiply first, then divide by 60 only.
 	return LerpAnimVector(RootTranslation[PrevFrame], RootTranslation[NextFrame],
-	                      (Time - RoundedToFrame * 60) / (60 * FrameCount) * 1000);
+	                      (Time - RoundedToFrame * 60) * 1000 / 60);
+}
+
+bool UNightSkyAnimSequenceUserData::HasRootMotion() const
+{
+	for (const auto& [Frame, Translation] : RootTranslation)
+	{
+		if (Translation.X != 0 || Translation.Y != 0 || Translation.Z != 0) return true;
+	}
+	return false;
 }
 
 FAnimTransform UNightSkyAnimSequenceUserData::GetCachedBoneTransformAtTime(FName BoneName, int32 Time,
