@@ -89,3 +89,13 @@
 * The build needs the UE 5.8 launcher install and VS 2022 (MSVC 14.44). The plugin also needs `ALS` (Plugins/ALS-Refactored, patched for 5.8).
 * Third-party content with known compile errors: CombatMagicAnims demo rigs, the Narrative Inventory integration
   (needs a plugin that isn't installed), NiagaraExamples utilities, MagicProjectiles demo. They don't affect NSE.
+
+## Game states and controllers
+
+* **Spawning a second `AGameStateBase` replaces the world's game state** (`AGameStateBase::PostInitializeComponents`
+  calls `World->SetGameState(this)`). `ANightSkyGameState` handles this (sub game state, see 01 Architecture). Any other
+  game state class you spawn mid-game will take over `GetWorld()->GetGameState()`.
+* Look up the battle with `ANightSkyGameState::Get(this)`, and read or clear input through
+  `UNightSkyBattleInputComponent::FindOn(Controller)`, never by casting to `ANightSkyPlayerController`. A Narrative or
+  other game controller won't be one.
+* Fixed while moving input to the component: `PressB` was only bound when `PressA` was valid (copy-paste check).

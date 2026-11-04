@@ -104,3 +104,20 @@ parent's hitstop through `StopLinkObj`), `Move()`, its `ObjectState->Init()` on 
   overworld. Walking into an NPC (`StartBattle`) spawns `APlayerObject`s from each character's
   `CharaData` (plus `Allies` for tag/assist) and runs a battle in place. Delegates
   `OnBattleStart`/`OnBattleEnd` hand control back. NPC dialogue uses the Narrative plugin (`Blueprints/WT/Narrative`).
+
+## Game state lookup and battle input (any world, any controller)
+
+* **`ANightSkyGameState::Get(WorldContext)`** is the only way to find the battle's game state. Don't use
+  `Cast<ANightSkyGameState>(GetWorld()->GetGameState())`. It returns the world's game state when that is an NSE one
+  (regular battles), otherwise the battle game state spawned into the world.
+* A game state spawned into a world that **already has one** (e.g. Narrative's game state in an overworld) becomes a
+  **sub game state** (`bIsSubGameState`). `AGameStateBase::PostInitializeComponents` would make it the world's game
+  state; NSE restores the previous one straight after, so systems that cast `GetWorld()->GetGameState()` to their own
+  class (Narrative does this in ~17 places) keep working during the battle.
+* **`UNightSkyBattleInputComponent`** collects the `INP_*` bits for one local player from the NSE Enhanced Input
+  actions (`IMC_Battle`). `ANightSkyGameState::GetLocalInputs` reads it from whatever controller the local player has,
+  so a game's own controller can run NSE battles by adding the component. Call `BindActions` from
+  `SetupInputComponent`, `AddMapping`/`RemoveMapping` around a battle, and `SetBattleInputEnabled(false)` outside one.
+  Disabling ignores presses and clears held bits, so no direction stays held when a battle ends.
+* `ANightSkyPlayerController` always has one (`BattleInput`). Its own `InputMapping`/`InputActions` properties are
+  copied into the component when the component's are unset, so existing controller Blueprints keep working.

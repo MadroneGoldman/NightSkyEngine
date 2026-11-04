@@ -344,6 +344,24 @@ public:
 	int32 LocalFrame = 0;
 	int32 RemoteFrame = 0;
 
+	/**
+	 * The NSE game state for WorldContext's world: the world's own game state when it is an NSE one (regular
+	 * battles), otherwise a battle game state spawned into a world that has another game state (for example a battle
+	 * started from a Narrative overworld). Use this instead of Cast<ANightSkyGameState>(GetWorld()->GetGameState()).
+	 */
+	UFUNCTION(BlueprintPure, Category="NightSky", meta=(WorldContext="WorldContext"))
+	static ANightSkyGameState* Get(const UObject* WorldContext);
+
+	/**
+	 * True when this game state was spawned into a world that already had a game state. The world keeps its own
+	 * (AGameStateBase::PostInitializeComponents would otherwise replace it), so GetWorld()->GetGameState() is not
+	 * this actor. Look it up with Get().
+	 */
+	UPROPERTY(BlueprintReadOnly, Category="NightSky")
+	bool bIsSubGameState = false;
+
+	virtual void PostInitializeComponents() override;
+
 private:
 	int32 LocalInputs[2] = {};
 	int32 Checksum = 0;

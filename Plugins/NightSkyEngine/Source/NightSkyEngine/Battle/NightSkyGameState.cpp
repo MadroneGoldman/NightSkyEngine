@@ -2,6 +2,8 @@
 
 
 #include "NightSkyGameState.h"
+#include "EngineUtils.h"
+#include "Engine/Engine.h"
 #include "LevelSequenceActor.h"
 #include "LevelSequencePlayer.h"
 #include "NightSkyPlayerController.h"
@@ -34,6 +36,34 @@ ANightSkyGameState::ANightSkyGameState()
 	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
 	SequenceCameraActorClass = ACineCameraActor::StaticClass();
+}
+
+ANightSkyGameState* ANightSkyGameState::Get(const UObject* WorldContext)
+{
+	const UWorld* World = GEngine ? GEngine->GetWorldFromContextObject(WorldContext, EGetWorldErrorMode::ReturnNull) : nullptr;
+	if (!World) return nullptr;
+	if (const auto WorldGameState = Cast<ANightSkyGameState>(World->GetGameState())) return WorldGameState;
+	// A battle spawned next to another game state (see bIsSubGameState). There is at most one at a time.
+	for (TActorIterator<ANightSkyGameState> It(const_cast<UWorld*>(World)); It; ++It)
+	{
+		if (IsValid(*It) && !It->IsActorBeingDestroyed()) return *It;
+	}
+	return nullptr;
+}
+
+void ANightSkyGameState::PostInitializeComponents()
+{
+	// AGameStateBase::PostInitializeComponents makes this the world's game state. When the world already has one
+	// (e.g. Narrative's game state in an overworld), the battle runs as a sub game state and the world keeps its own,
+	// so systems that cast GetWorld()->GetGameState() to their own class keep working during the battle.
+	UWorld* World = GetWorld();
+	AGameStateBase* PreviousGameState = World ? World->GetGameState() : nullptr;
+	Super::PostInitializeComponents();
+	if (World && IsValid(PreviousGameState) && PreviousGameState != this)
+	{
+		World->SetGameState(PreviousGameState);
+		bIsSubGameState = true;
+	}
 }
 
 // Called when the game starts or when spawned
@@ -1329,15 +1359,13 @@ void ANightSkyGameState::ResetTraining()
 		RoundInit();
 	}
 	
-	if (ANightSkyPlayerController* Controller = Cast<ANightSkyPlayerController>(
-	UGameplayStatics::GetPlayerController(GetWorld(), 0)); Controller != nullptr)
+	for (int32 Index = 0; Index < 2; Index++)
 	{
-		Controller->Inputs &= ~INP_ResetTraining;
-	}
-	if (ANightSkyPlayerController* Controller = Cast<ANightSkyPlayerController>(
-		UGameplayStatics::GetPlayerController(GetWorld(), 1)); Controller != nullptr)
-	{
-		Controller->Inputs &= ~INP_ResetTraining;
+		if (UNightSkyBattleInputComponent* BattleInput = UNightSkyBattleInputComponent::FindOn(
+			UGameplayStatics::GetPlayerController(GetWorld(), Index)))
+		{
+			BattleInput->Inputs &= ~INP_ResetTraining;
+		}
 	}
 }
 
@@ -1906,10 +1934,11 @@ bool ANightSkyGameState::CanTag(const APlayerObject* InPlayer, int TeamIndex) co
 
 int ANightSkyGameState::GetLocalInputs(int Index) const
 {
-	if (const ANightSkyPlayerController* Controller = Cast<ANightSkyPlayerController>(
-		UGameplayStatics::GetPlayerController(GetWorld(), Index)); Controller != nullptr)
+	// Any controller with a battle input component works (ANightSkyPlayerController always has one).
+	if (const UNightSkyBattleInputComponent* BattleInput = UNightSkyBattleInputComponent::FindOn(
+		UGameplayStatics::GetPlayerController(GetWorld(), Index)))
 	{
-		return Controller->Inputs;
+		return BattleInput->Inputs;
 	}
 	return 0;
 }

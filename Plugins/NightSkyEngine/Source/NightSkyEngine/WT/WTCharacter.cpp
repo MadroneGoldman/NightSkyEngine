@@ -21,7 +21,7 @@ void AWTCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 
-	GameState = Cast<ANightSkyWTGameState>(GetWorld()->GetGameState());
+	GameState = Cast<ANightSkyWTGameState>(ANightSkyGameState::Get(this));
 	if (GameState)
 		GameState->OnBattleEndDelegate.AddUniqueDynamic(this, &AWTCharacter::EndBattle);
 		GameState->OnBattleStartDelegate.AddUniqueDynamic(this, &AWTCharacter::BattleStarted);
