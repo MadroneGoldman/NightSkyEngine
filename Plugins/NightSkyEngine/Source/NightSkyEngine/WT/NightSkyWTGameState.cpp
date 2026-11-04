@@ -142,6 +142,11 @@ void ANightSkyWTGameState::Tick(float DeltaTime)
 	{
 		bIsBattling = false;
 		bIsMatchEnd = false;
+		// Init spawns MaxBattleObjects pooled objects for every battle; destroy them, or every WT battle leaks them.
+		for (ABattleObject* Object : Objects)
+		{
+			if (IsValid(Object)) Object->Destroy();
+		}
 		Objects.Empty();
 		Players.Empty();
 		SortedObjects.Empty();
