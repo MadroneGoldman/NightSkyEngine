@@ -68,7 +68,7 @@ int UDPConnectionManager::SendTo(const char* buffer, int len, int flags, int con
 		UE_LOG(GGPOLOG, Error, TEXT("Unknown error in sendto (erro: %d  wsaerr: %d), Connection ID: %d.\n"), res, err, connection_id)		
 		check(false && "Unknown error in sendto");
 	}
-	UE_LOG(GGPOLOG, Verbose, TEXT("Connection not in map Connection ID: %d)."), len,
+	UE_LOG(GGPOLOG, Verbose, TEXT("Sent packet (len: %d) to %hs (ret: %d)."), len,
 		ToString(connection_id).c_str(), res);
 	
 	return 0;
