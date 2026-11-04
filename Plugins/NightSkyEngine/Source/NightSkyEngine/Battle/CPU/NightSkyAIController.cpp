@@ -20,7 +20,7 @@ void ANightSkyAIController::BeginPlay()
 {
 	Super::BeginPlay();
 
-	GameState = Cast<ANightSkyGameState>(GetWorld()->GetGameState());
+	GameState = ANightSkyGameState::Get(this);
 }
 
 void ANightSkyAIController::Update()

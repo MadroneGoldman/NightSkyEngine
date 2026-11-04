@@ -111,7 +111,7 @@ void ANetworkPawn::ServerGetBattleData_Implementation(FBattleData InBattleData, 
 
 void ANetworkPawn::ServerChecksumCheck_Implementation(uint32 Checksum, int32 InFrame)
 {
-	if (ANightSkyGameState* GameState = Cast<ANightSkyGameState>(GetWorld()->GetGameState()))
+	if (ANightSkyGameState* GameState = ANightSkyGameState::Get(this))
 	{
 		if (GameState != nullptr)
 		{
@@ -122,7 +122,7 @@ void ANetworkPawn::ServerChecksumCheck_Implementation(uint32 Checksum, int32 InF
 
 void ANetworkPawn::ClientChecksumCheck_Implementation(uint32 Checksum, int32 InFrame)
 {
-	if (ANightSkyGameState* GameState = Cast<ANightSkyGameState>(GetWorld()->GetGameState()))
+	if (ANightSkyGameState* GameState = ANightSkyGameState::Get(this))
 	{
 		if (GameState != nullptr)
 		{
