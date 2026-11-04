@@ -31,6 +31,7 @@ public class NightSkyEngineEditor : ModuleRules
                 "GameplayTags",
                 "UnrealEd",
                 "AssetRegistry",
+                "Json",
             }
         );
     }
