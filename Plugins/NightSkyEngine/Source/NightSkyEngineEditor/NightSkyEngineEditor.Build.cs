@@ -29,6 +29,8 @@ public class NightSkyEngineEditor : ModuleRules
                 "SlateCore",
                 "NightSkyEngine",
                 "GameplayTags",
+                "UnrealEd",
+                "AssetRegistry",
             }
         );
     }
