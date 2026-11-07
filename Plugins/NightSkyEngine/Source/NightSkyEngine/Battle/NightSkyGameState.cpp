@@ -814,9 +814,9 @@ void ANightSkyGameState::SetScreenCorners()
 
 		if (bIsFirst)
 		{
-			ScreenData->ObjTop = Target->T / 1000;
-			ScreenData->ObjBottom = Target->B / 1000;
-			ScreenData->HigherObjBottom = Target->B / 1000;
+			ScreenData->ObjTop = (Target->T - Target->GroundHeight) / 1000;
+			ScreenData->ObjBottom = (Target->B - Target->GroundHeight) / 1000;
+			ScreenData->HigherObjBottom = (Target->B - Target->GroundHeight) / 1000;
 			ScreenData->ObjLeft = TargetL / 1000;
 			ScreenData->ObjRight = TargetR / 1000;
 
@@ -824,9 +824,9 @@ void ANightSkyGameState::SetScreenCorners()
 		}
 		else
 		{
-			if (Target->T > ScreenData->ObjTop * 1000) ScreenData->ObjTop = Target->T / 1000;
-			if (Target->B < ScreenData->ObjBottom * 1000) ScreenData->ObjBottom = Target->B / 1000;
-			if (Target->B > ScreenData->HigherObjBottom * 1000) ScreenData->HigherObjBottom = Target->B / 1000;
+			if (Target->T - Target->GroundHeight > ScreenData->ObjTop * 1000) ScreenData->ObjTop = (Target->T - Target->GroundHeight) / 1000;
+			if (Target->B - Target->GroundHeight < ScreenData->ObjBottom * 1000) ScreenData->ObjBottom = (Target->B - Target->GroundHeight) / 1000;
+			if (Target->B - Target->GroundHeight > ScreenData->HigherObjBottom * 1000) ScreenData->HigherObjBottom = (Target->B - Target->GroundHeight) / 1000;
 			if (TargetL < ScreenData->ObjLeft * 1000) ScreenData->ObjLeft = TargetL / 1000;
 			if (TargetR > ScreenData->ObjRight * 1000) ScreenData->ObjRight = TargetR / 1000;
 		}
@@ -1405,9 +1405,9 @@ void ANightSkyGameState::SetScreenBounds() const
 					}
 				}
 
-				if (SortedObjects[i]->PosY >= ScreenData->ScreenBoundsTop * 1000)
+				if (SortedObjects[i]->PosY >= ScreenData->ScreenBoundsTop * 1000 + SortedObjects[i]->GroundHeight)
 				{
-					SortedObjects[i]->PosY = ScreenData->ScreenBoundsTop * 1000;
+					SortedObjects[i]->PosY = ScreenData->ScreenBoundsTop * 1000 + SortedObjects[i]->GroundHeight;
 				}
 			}
 		}
@@ -1465,6 +1465,7 @@ void ANightSkyGameState::UpdateCamera()
 				FVector(ScreenData->FinalScreenX * OBJ_SCALE, ScreenData->FinalScreenWidth * OBJ_SCALE,
 				        ScreenData->FinalScreenY * OBJ_SCALE - ScreenData->ScreenYZoom + CameraYOffset)) + BattleSceneTransform.
 			GetLocation();
+		BattleState.CameraPosition.Z += GetCameraFloorOffset(BattleState.CameraPosition);
 		FRotator CameraRotation = BattleSceneTransform.GetRotation().Rotator();
 		CameraRotation.Yaw -= 90;
 		CameraRotation.Pitch -= CameraYaw;
@@ -1536,7 +1537,8 @@ void ANightSkyGameState::UpdateCamera()
 			}
 
 			SequenceCameraActor->SetActorLocation(
-				BattleSceneTransform.GetRotation().RotateVector(NewCamLocation) + BattleSceneTransform.GetLocation());
+				BattleSceneTransform.GetRotation().RotateVector(NewCamLocation) + BattleSceneTransform.GetLocation()
+				+ FVector(0, 0, SequenceTarget ? GetFloorHeightAt(SequenceTarget->PosX) / COORD_SCALE : 0.f));
 
 			const FRotator SequenceRotation = BattleSceneTransform.GetRotation().Rotator() + SequenceCameraActor->
 				GetActorRotation();

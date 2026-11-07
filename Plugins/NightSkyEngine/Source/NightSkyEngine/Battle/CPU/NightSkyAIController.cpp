@@ -163,6 +163,11 @@ int32 ANightSkyAIController::GetEnemyDistanceX() const
 int32 ANightSkyAIController::GetEnemyDistanceY() const
 {
 	if (!IsValid(Player)) return 0;
+	// On a floor that isn't flat, what matters is how far each is off the ground: standing uphill isn't being in the air.
+	if (Player->GameState && Player->GameState->HasBattleFloor() && Player->Enemy)
+	{
+		return FMath::Abs((Player->PosY - Player->GroundHeight) - (Player->Enemy->PosY - Player->Enemy->GroundHeight));
+	}
 	return Player->CalculateDistanceBetweenPoints(DIST_DistanceY, OBJ_Self, POS_Player, OBJ_Enemy, POS_Player);
 }
 
@@ -179,7 +184,7 @@ int32 ANightSkyAIController::CheckBasicWeight(const UState* State) const
 		break;
 	case EStateType::NeutralJump:
 	case EStateType::ForwardJump:
-		if (GetEnemyDistanceY() > 105000 && Player->PosY < Player->Enemy->PosY)
+		if (GetEnemyDistanceY() > 105000 && Player->PosY - Player->GroundHeight < Player->Enemy->PosY - Player->Enemy->GroundHeight)
 		{
 			Weight += GameState->BattleState.RandomManager.RandRange(10, 25);
 		}
@@ -273,7 +278,7 @@ int32 ANightSkyAIController::CheckAttackWeight(const UState* State) const
 								   State->CPUData.AttackYBeginRange, State->CPUData.AttackYEndRange))
 		Weight -= 50;
 
-	if (Player->PosY < Player->Enemy->PosY && State->CPUData.bAntiAir) Weight += GameState->BattleState.RandomManager.RandRange(15, 40);
+	if (Player->PosY - Player->GroundHeight < Player->Enemy->PosY - Player->Enemy->GroundHeight && State->CPUData.bAntiAir) Weight += GameState->BattleState.RandomManager.RandRange(15, 40);
 
 	if (State->CPUData.bUsesResource) Weight -= GameState->BattleState.RandomManager.RandRange(15, 40);
 	if (State->CPUData.bBigDamage) Weight += GameState->BattleState.RandomManager.RandRange(15, 40);

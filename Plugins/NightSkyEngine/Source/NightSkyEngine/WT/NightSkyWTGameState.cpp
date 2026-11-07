@@ -3,6 +3,10 @@
 
 #include "NightSkyWTGameState.h"
 
+#include "Algo/BinarySearch.h"
+#include "DrawDebugHelpers.h"
+#include "NightSkyEngine/Battle/Misc/Globals.h"
+
 #include "Camera/CameraActor.h"
 #include "NightSkyEngine/Battle/Actors/ParticleManager.h"
 #include "NightSkyEngine/Battle/FighterRunners/FighterLocalRunner.h"
@@ -131,9 +135,87 @@ void ANightSkyWTGameState::Init(APlayerObject* P1, APlayerObject* P2,APlayerObje
 }
 
 // Called every frame
+void ANightSkyWTGameState::SetBattleFloor(const TArray<FVector2D>& PointsCm)
+{
+	ClearBattleFloor();
+	if (PointsCm.Num() < 2) return;
+	FloorPoints.Reserve(PointsCm.Num());
+	for (const FVector2D& Point : PointsCm)
+	{
+		FloorPoints.Add(FIntPoint(FMath::RoundToInt32(Point.X * COORD_SCALE), FMath::RoundToInt32(Point.Y * COORD_SCALE)));
+	}
+}
+
+void ANightSkyWTGameState::ClearBattleFloor()
+{
+	FloorPoints.Reset();
+	CameraFloorOffset = 0.f;
+	bCameraFloorOffsetValid = false;
+}
+
+TArray<FVector2D> ANightSkyWTGameState::GetBattleFloorPoints() const
+{
+	TArray<FVector2D> Points;
+	Points.Reserve(FloorPoints.Num());
+	for (const FIntPoint& Point : FloorPoints) Points.Add(FVector2D(Point.X / COORD_SCALE, Point.Y / COORD_SCALE));
+	return Points;
+}
+
+int32 ANightSkyWTGameState::FloorHeightOnLine(const int32 InPosX) const
+{
+	if (InPosX <= FloorPoints[0].X) return FloorPoints[0].Y;
+	if (InPosX >= FloorPoints.Last().X) return FloorPoints.Last().Y;
+	const int32 Next = Algo::UpperBoundBy(FloorPoints, InPosX, &FIntPoint::X);
+	const FIntPoint& A = FloorPoints[Next - 1];
+	const FIntPoint& B = FloorPoints[Next];
+	// Integers only: a fight has to play out the same way on every machine.
+	return A.Y + static_cast<int32>(static_cast<int64>(B.Y - A.Y) * (InPosX - A.X) / (B.X - A.X));
+}
+
+int32 ANightSkyWTGameState::GetFloorHeightAt(const int32 InPosX) const
+{
+	if (!HasBattleFloor()) return 0;
+	// Fighters stay upright, so stand on the highest ground under their feet, not just under their middle. Small, or
+	// they float over steep slopes: this lifts them by the slope x this distance.
+	static const int32 FootReach = FMath::RoundToInt32(15.f * COORD_SCALE);
+	return FMath::Max3(FloorHeightOnLine(InPosX - FootReach), FloorHeightOnLine(InPosX), FloorHeightOnLine(InPosX + FootReach));
+}
+
+float ANightSkyWTGameState::GetCameraFloorOffset(const FVector& CameraLocation)
+{
+	if (!HasBattleFloor()) return 0.f;
+	// Follow the floor under what's on screen...
+	float Target = GetFloorHeightAt(BattleState.ScreenData.FinalScreenX * 1000) / COORD_SCALE;
+	// ...and stay above the ground beneath the camera, which is off to the side of the fight's line.
+	const FVector Top = CameraLocation + FVector(0, 0, Target + MaxCameraGroundRaise + CameraGroundClearance);
+	const FVector Bottom = CameraLocation + FVector(0, 0, Target - 500.f);
+	FHitResult Hit;
+	const FCollisionObjectQueryParams Static(ECC_WorldStatic);
+	if (GetWorld()->LineTraceSingleByObjectType(Hit, Top, Bottom, Static, FCollisionQueryParams(TEXT("WitchBattleCamera"), false)) && !Hit.bStartPenetrating)
+	{
+		Target += FMath::Clamp(Hit.ImpactPoint.Z + CameraGroundClearance - (CameraLocation.Z + Target), 0.f, MaxCameraGroundRaise);
+	}
+	CameraFloorOffset = bCameraFloorOffsetValid ? FMath::FInterpTo(CameraFloorOffset, Target, GetWorld()->GetDeltaSeconds(), CameraFloorFollowSpeed) : Target;
+	bCameraFloorOffsetValid = true;
+	return CameraFloorOffset;
+}
+
+void ANightSkyWTGameState::DrawBattleFloor() const
+{
+	const FTransform& Scene = BattleSceneTransform;
+	for (int32 i = 1; i < FloorPoints.Num(); i++)
+	{
+		const FVector A = Scene.GetRotation().RotateVector(FVector(FloorPoints[i - 1].X / COORD_SCALE, 0, FloorPoints[i - 1].Y / COORD_SCALE)) + Scene.GetLocation();
+		const FVector B = Scene.GetRotation().RotateVector(FVector(FloorPoints[i].X / COORD_SCALE, 0, FloorPoints[i].Y / COORD_SCALE)) + Scene.GetLocation();
+		DrawDebugLine(GetWorld(), A, B, FColor::Magenta, false, -1.f, 255, 3.f);
+	}
+}
+
 void ANightSkyWTGameState::Tick(float DeltaTime)
 {
 	AActor::Tick(DeltaTime);
+
+	if (bViewCollision && HasBattleFloor()) DrawBattleFloor();
 	
 	if (bIsBattling && IsValid(FighterRunner))
 		FighterRunner->Update(DeltaTime);

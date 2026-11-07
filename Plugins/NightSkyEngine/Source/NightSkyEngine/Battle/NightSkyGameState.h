@@ -386,6 +386,15 @@ protected:
 	void NextRoundTransition(bool bIsP1);
 	bool HandleMatchWin();
 	void CollisionView() const;
+public:
+	/** Whether this battle has a floor that isn't flat. Only WT battles can: see ANightSkyWTGameState. */
+	virtual bool HasBattleFloor() const { return false; }
+	/** Floor height at a position along the stage, in PosY units. */
+	virtual int32 GetFloorHeightAt(int32 InPosX) const { return 0; }
+	/** How far (cm) the battle camera rises at this world location. Display only. */
+	virtual float GetCameraFloorOffset(const FVector& CameraLocation) { return 0.f; }
+
+protected:
 	int32 CreateChecksum();
 	FGGPONetworkStats GetNetworkStats() const;
 	void ResetTraining();
