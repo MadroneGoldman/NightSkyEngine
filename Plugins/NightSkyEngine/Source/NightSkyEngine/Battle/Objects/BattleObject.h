@@ -1002,6 +1002,8 @@ protected:
 	virtual void BeginPlay() override;
 	// Moves object
 	void Move();
+	/** A battle with a floor that isn't flat: the ground under this object, and staying on it while walking. */
+	void FollowBattleFloor(bool bWasOnFloor);
 	void CalculateHoming();
 	bool SuperArmorSuccess(const ABattleObject* Attacker) const;
 	FGameplayTag HandleParrySubroutineName;

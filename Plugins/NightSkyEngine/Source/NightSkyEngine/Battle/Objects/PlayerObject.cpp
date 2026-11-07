@@ -1941,12 +1941,12 @@ void APlayerObject::HandleBlockAction()
 	}
 	else if (CheckInput(Input1) || GetCurrentStateName(StateMachine_Primary) == State_Universal_CrouchBlock)
 	{
-		PosY = 0;
+		PosY = GroundHeight;
 		BufferedStateName = State_Universal_CrouchBlock;
 	}
 	else
 	{
-		PosY = 0;
+		PosY = GroundHeight;
 		BufferedStateName = State_Universal_StandBlock;
 	}
 }
@@ -2290,8 +2290,8 @@ void APlayerObject::HandleThrowCollision()
 {
 	if ((Enemy->InvulnFlags & INV_ThrowInvulnerable) == 0 && !Enemy->ThrowInvulnerableTimer
 		&& !Enemy->ThrowResistTimer && !Enemy->CheckIsStunned()
-		&& ((Enemy->PosY <= GroundHeight && PosY <= GroundHeight)
-			|| (Enemy->PosY > GroundHeight && PosY > GroundHeight)))
+		&& ((Enemy->PosY <= Enemy->GroundHeight && PosY <= GroundHeight)
+			|| (Enemy->PosY > Enemy->GroundHeight && PosY > GroundHeight)))
 	{
 		FInputCondition Left;
 		FInputBitmask BitmaskLeft;
@@ -3049,7 +3049,10 @@ void APlayerObject::RoundInit(bool ResetHealth)
 	SpeedYRatePerFrame = 100;
 	SpeedZRate = 100;
 	SpeedZRatePerFrame = 100;
-	GroundHeight = 0;
+	// Round start: on the floor under the start position (0 unless this battle's floor isn't flat).
+	GroundHeight = GameState && GameState->HasBattleFloor() ? GameState->GetFloorHeightAt(PosX) : 0;
+	PosY = GroundHeight;
+	PrevPosY = GroundHeight;
 	ActionReg1 = 0;
 	ActionReg2 = 0;
 	ActionReg3 = 0;

@@ -2,6 +2,7 @@
 
 
 #include "BattleObject.h"
+#include "Misc/ScopeExit.h"
 #include "NiagaraComponent.h"
 #include "NiagaraFunctionLibrary.h"
 #include "NightSkyEngine/Battle/Misc/NightSkyBlueprintFunctionLibrary.h"
@@ -40,8 +41,40 @@ void ABattleObject::BeginPlay()
 	}
 }
 
+void ABattleObject::FollowBattleFloor(const bool bWasOnFloor)
+{
+	GroundHeight = GameState->GetFloorHeightAt(PosX);
+	if (!(MiscFlags & MISC_FloorCollisionActive) || PositionLinkObj) return;
+	// A thrown fighter is placed by the thrower, and isn't on the floor even if it was when the throw started.
+	if (IsPlayer && Player && Player->PlayerFlags & PLF_IsThrowLock) return;
+	const bool bInAir = IsPlayer && Player && Player->Stance == ACT_Jumping;
+	if (bWasOnFloor && !bInAir)
+	{
+		// Walking along a slope is not jumping or landing, so the previous height moves with it.
+		PosY = GroundHeight;
+		PrevPosY = GroundHeight;
+	}
+	else if (PosY <= GroundHeight)
+	{
+		// In the air and the ground rose to meet it. That is a landing, or the fighter would slide along the slope in its
+		// jump state: landing checks for a previous height above the ground.
+		PosY = GroundHeight;
+		PrevPosY = FMath::Max(PrevPosY, GroundHeight + 1);
+		SpeedY = FMath::Min(SpeedY, 0);
+	}
+}
+
 void ABattleObject::Move()
 {
+	const bool bHasBattleFloor = GameState && GameState->HasBattleFloor();
+	const bool bWasGrounded = PosY <= GroundHeight && SpeedY <= 0;
+	const int32 PosYBeforeMove = PosY;
+	ON_SCOPE_EXIT
+	{
+		// Only a battle with a floor gets here. Something that moved this object upwards (root motion) has left the floor.
+		if (bHasBattleFloor) FollowBattleFloor(bWasGrounded && PosY <= PosYBeforeMove);
+	};
+
 	if (!IsPlayer)
 	{
 		PositionLinkUpdate();
