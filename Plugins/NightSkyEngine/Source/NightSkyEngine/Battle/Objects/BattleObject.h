@@ -962,6 +962,8 @@ public:
 	int32 ObjectStateIndex = 0;
 	bool bIsCommonState = false;
 	bool bIsNeutral = false;
+	// Madrone change: push collision moves whoever touches this object, never the object itself (a heavy battle prop).
+	bool bPushImmovable = false;
 
 	// Anything past here isn't saved or loaded for rollback, unless it has the SaveGame tag.
 	uint32 ObjSyncEnd = 0;
@@ -1003,7 +1005,7 @@ protected:
 	// Moves object
 	void Move();
 	/** A battle with a floor that isn't flat: the ground under this object, and staying on it while walking. */
-	void FollowBattleFloor(bool bWasOnFloor);
+	void FollowBattleFloor(bool bWasOnFloor, bool bRootMotionMove, int32 PosYBeforeMove);
 	void CalculateHoming();
 	bool SuperArmorSuccess(const ABattleObject* Attacker) const;
 	FGameplayTag HandleParrySubroutineName;

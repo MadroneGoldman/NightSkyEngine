@@ -41,26 +41,60 @@ void ABattleObject::BeginPlay()
 	}
 }
 
-void ABattleObject::FollowBattleFloor(const bool bWasOnFloor)
+void ABattleObject::FollowBattleFloor(const bool bWasOnFloor, const bool bRootMotionMove, const int32 PosYBeforeMove)
 {
 	GroundHeight = GameState->GetFloorHeightAt(PosX);
 	if (!(MiscFlags & MISC_FloorCollisionActive) || PositionLinkObj) return;
 	// A thrown fighter is placed by the thrower, and isn't on the floor even if it was when the throw started.
 	if (IsPlayer && Player && Player->PlayerFlags & PLF_IsThrowLock) return;
 	const bool bInAir = IsPlayer && Player && Player->Stance == ACT_Jumping;
-	if (bWasOnFloor && !bInAir)
+
+	// A state that only exists on the ground (walk, dash, stand, crouch). On a slope its root motion and the floor's
+	// steps can leave it a little above the ground, and then NSE calls it airborne: it slid down the hill in a falling
+	// state that never landed, because root motion moves skip gravity. Up to this far, it's put back on the floor.
+	constexpr int32 GroundStateStepDown = static_cast<int32>(30 * COORD_SCALE);
+	constexpr int32 LandTolerance = static_cast<int32>(3 * COORD_SCALE);
+	const UState* State = IsPlayer && Player ? Player->PrimaryStateMachine.CurrentState : nullptr;
+	const bool bGroundState = State && (State->EntryStance == EEntryStance::Standing || State->EntryStance == EEntryStance::Crouching);
+	// Coming down (any height up to the step) or resting a hair above the floor (a walk's bob). Not at the top of a hop:
+	// that comes down by itself, or by the gravity below, and then lands.
+	const int32 Above = PosY - GroundHeight;
+	const bool bSnapGroundState = bGroundState && ((SpeedY < 0 && Above <= GroundStateStepDown) || (SpeedY == 0 && Above <= LandTolerance));
+
+	if ((bWasOnFloor && !bInAir) || bSnapGroundState)
 	{
-		// Walking along a slope is not jumping or landing, so the previous height moves with it.
 		PosY = GroundHeight;
-		PrevPosY = GroundHeight;
+		if (bInAir && SpeedY < 0)
+		{
+			// Coming down from a hop that belongs to a ground state, like a backdash: that's a landing, which is what
+			// ends the state. Without it the backdash never finished.
+			PrevPosY = FMath::Max(PrevPosY, GroundHeight + 1);
+		}
+		else
+		{
+			// Walking along a slope is not jumping or landing, so the previous height moves with it.
+			PrevPosY = GroundHeight;
+			if (bInAir && bGroundState)
+			{
+				Player->Stance = State->EntryStance == EEntryStance::Crouching ? ACT_Crouching : ACT_Standing;
+			}
+		}
 	}
-	else if (PosY <= GroundHeight)
+	else if (PosY <= GroundHeight || (IsPlayer && SpeedY <= 0 && PosY <= PosYBeforeMove && PosY - GroundHeight <= LandTolerance))
 	{
 		// In the air and the ground rose to meet it. That is a landing, or the fighter would slide along the slope in its
-		// jump state: landing checks for a previous height above the ground.
+		// jump state: landing checks for a previous height above the ground. A fighter coming down a hair above the floor
+		// lands too: on a slope it was otherwise left a fraction of a centimetre up every frame and never landed.
 		PosY = GroundHeight;
 		PrevPosY = FMath::Max(PrevPosY, GroundHeight + 1);
 		SpeedY = FMath::Min(SpeedY, 0);
+	}
+	else if (IsPlayer && bRootMotionMove && PosY == PosYBeforeMove && SpeedY <= 0)
+	{
+		// In the air in a root-motion state that isn't moving it up or down: it would hover there for good. It falls.
+		SpeedY -= Gravity;
+		PosY = FMath::Max(PosY + SpeedY, GroundHeight);
+		if (PosY == GroundHeight) PrevPosY = FMath::Max(PrevPosY, GroundHeight + 1);
 	}
 }
 
@@ -69,10 +103,13 @@ void ABattleObject::Move()
 	const bool bHasBattleFloor = GameState && GameState->HasBattleFloor();
 	const bool bWasGrounded = PosY <= GroundHeight && SpeedY <= 0;
 	const int32 PosYBeforeMove = PosY;
+	bool bRootMotionMove = false;
 	ON_SCOPE_EXIT
 	{
-		// Only a battle with a floor gets here. Something that moved this object upwards (root motion) has left the floor.
-		if (bHasBattleFloor) FollowBattleFloor(bWasGrounded && PosY <= PosYBeforeMove);
+		// Only a battle with a floor gets here. Something that moved this object upwards (root motion) has left the floor,
+		// but not a walk animation's few centimetres of bob.
+		constexpr int32 RootMotionBob = static_cast<int32>(3 * COORD_SCALE);
+		if (bHasBattleFloor) FollowBattleFloor(bWasGrounded && PosY <= PosYBeforeMove + RootMotionBob, bRootMotionMove, PosYBeforeMove);
 	};
 
 	if (!IsPlayer)
@@ -102,6 +139,7 @@ void ABattleObject::Move()
 	const auto BodyAnimUserData = GetAnimSequenceUserData("Body");
 	if (BodyAnimUserData && BodyAnimUserData->HasRootMotion())
 	{
+		bRootMotionMove = true;
 		if (!MaxCelTime) return;
 		
 		const auto FrameAnim = AnimFrame + (BlendAnimFrame - AnimFrame) * (MaxCelTime - TimeUntilNextCel) / MaxCelTime;
@@ -529,7 +567,16 @@ void ABattleObject::HandlePushCollision(ABattleObject* OtherObj)
 					CollisionDepth = OtherObj->R - L;
 				}
 
-				if ((IsPlayer && Player->PlayerFlags & PLF_TouchingWall) 
+				//Madrone change: an immovable object stays put and the other takes the whole push.
+				if (OtherObj->bPushImmovable && !bPushImmovable)
+				{
+					PosX += CollisionDepth;
+				}
+				else if (bPushImmovable && !OtherObj->bPushImmovable)
+				{
+					OtherObj->PosX -= CollisionDepth;
+				}
+				else if ((IsPlayer && Player->PlayerFlags & PLF_TouchingWall)
 					|| (OtherObj->IsPlayer && OtherObj->Player->PlayerFlags & PLF_TouchingWall))
 				{
 					OtherObj->PosX -= CollisionDepth;
@@ -2382,6 +2429,7 @@ void ABattleObject::ResetObject()
 	ActionReg7 = 0;
 	ActionReg8 = 0;
 	ObjectReg1 = 0;
+	bPushImmovable = false; //Madrone change
 	ObjectReg2 = 0;
 	ObjectReg3 = 0;
 	ObjectReg4 = 0;
