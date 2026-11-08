@@ -2650,6 +2650,47 @@ void APlayerObject::SetStance(EActionStance InStance)
 	Stance = InStance;
 }
 
+// Madrone change: foot IK flags for the live retarget (presentation only).
+namespace
+{
+	uint8 FootIKBits(const EFootIKSide Foot)
+	{
+		switch (Foot)
+		{
+		case EFootIKSide::Left: return 1;
+		case EFootIKSide::Right: return 2;
+		default: return 3;
+		}
+	}
+}
+
+void APlayerObject::EnableFootIK(const EFootIKSide Foot)
+{
+	FootIKFlags |= FootIKBits(Foot);
+}
+
+void APlayerObject::DisableFootIK(const EFootIKSide Foot)
+{
+	FootIKFlags &= ~FootIKBits(Foot);
+}
+
+void APlayerObject::SetFootIK(const EFootIK Mode)
+{
+	switch (Mode)
+	{
+	case EFootIK::None: FootIKFlags = 0; break;
+	case EFootIK::LeftFoot: FootIKFlags = 1; break;
+	case EFootIK::RightFoot: FootIKFlags = 2; break;
+	default: FootIKFlags = 3; break;
+	}
+}
+
+bool APlayerObject::IsFootIKEnabled(const EFootIKSide Foot) const
+{
+	const uint8 Bits = FootIKBits(Foot);
+	return (FootIKFlags & Bits) == Bits;
+}
+
 bool APlayerObject::JumpToStatePrimary(FGameplayTag NewName, bool IsLabel)
 {
 	return JumpToState(NewName, StateMachine_Primary, IsLabel);
@@ -2965,6 +3006,9 @@ void APlayerObject::OnStateChange()
 
 void APlayerObject::PostStateChange()
 {
+	// Madrone change: each state starts with its own foot IK (before the subroutines, which may change it).
+	if (PrimaryStateMachine.CurrentState) SetFootIK(PrimaryStateMachine.CurrentState->FootIK);
+
 	CallSubroutine(Subroutine_Cmn_PostStateChange);
 	CallSubroutine(Subroutine_PostStateChange);
 

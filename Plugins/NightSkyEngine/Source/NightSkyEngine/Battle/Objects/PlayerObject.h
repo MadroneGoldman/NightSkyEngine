@@ -327,6 +327,14 @@ public:
 	// Anything past here isn't saved or loaded for rollback, unless it has the SaveGame tag.
 	uint32 PlayerSyncEnd;
 
+protected:
+	/** Madrone change: feet using leg IK in the live retarget (bit 0 left, bit 1 right). Set from each state's FootIK on
+	 * state change, then by EnableFootIK / DisableFootIK. Visual only, so not saved for rollback: resimulating after a
+	 * rollback runs the same state changes and calls again, which set it back. */
+	uint8 FootIKFlags = 3;
+
+public:
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	FText CharacterName;
 
@@ -579,6 +587,19 @@ public:
 	//set stance
 	UFUNCTION(BlueprintCallable)
 	void SetStance(EActionStance InStance);
+	/** Madrone change: keeps a foot (or both) on the source's foot positions in the live retarget (leg IK). Each state
+	 * starts with its own Foot IK setting; these change it until the next state. Presentation only, not saved for rollback. */
+	UFUNCTION(BlueprintCallable, Category = "Foot IK")
+	void EnableFootIK(EFootIKSide Foot);
+	/** Madrone change: lets a foot (or both) follow the animation alone, without leg IK, until the next state. */
+	UFUNCTION(BlueprintCallable, Category = "Foot IK")
+	void DisableFootIK(EFootIKSide Foot);
+	/** Madrone change: sets which feet use leg IK, like a state's Foot IK setting. */
+	UFUNCTION(BlueprintCallable, Category = "Foot IK")
+	void SetFootIK(EFootIK Mode);
+	/** Madrone change: true if that foot uses leg IK now (Both: both feet do). */
+	UFUNCTION(BlueprintPure, Category = "Foot IK")
+	bool IsFootIKEnabled(EFootIKSide Foot) const;
 	//force set state
 	bool JumpToStatePrimary	(FGameplayTag NewName, bool IsLabel = false);
 	//force set state

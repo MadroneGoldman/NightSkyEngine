@@ -116,6 +116,28 @@ enum class EStateCondition : uint8
 };
 
 /**
+ * Madrone change: which feet the character's live retarget keeps on the source's foot positions (leg IK) while in a
+ * state. Presentation only: a retargeted battle mesh reads it, the fight never does.
+ */
+UENUM(BlueprintType)
+enum class EFootIK : uint8
+{
+	BothFeet UMETA(DisplayName = "Both Feet"),
+	None,
+	LeftFoot UMETA(DisplayName = "Left Foot"),
+	RightFoot UMETA(DisplayName = "Right Foot"),
+};
+
+/** Madrone change: a foot, or both, for the foot IK functions on APlayerObject. */
+UENUM(BlueprintType)
+enum class EFootIKSide : uint8
+{
+	Left,
+	Right,
+	Both,
+};
+
+/**
  * Determines the method of which the input will be read.
  */
 UENUM()
@@ -451,6 +473,12 @@ public:
 	 */
 	UPROPERTY(EditAnywhere)
 	bool bCPUUsable = true;
+	/**
+	 * Madrone change: the feet kept on the source's foot positions (leg IK) when this state starts. The state can change
+	 * it frame by frame with the player's Enable Foot IK / Disable Foot IK / Set Foot IK. Presentation only.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Visual")
+	EFootIK FootIK = EFootIK::BothFeet;
 
 	UFUNCTION(BlueprintImplementableEvent)
 	void Init();
