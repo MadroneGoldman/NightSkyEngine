@@ -279,14 +279,16 @@ float ANightSkyWTGameState::GetCameraFloorOffset(const FVector& CameraLocation)
 	}
 	else
 	{
-		// No ground measured: stay above the ground straight beneath the camera.
-		const FVector Top = CameraLocation + FVector(0, 0, Floor + MaxCameraGroundRaise + CameraGroundClearance);
+		// No ground measured (no landscape): the camera's behaviour from before the ground survey, unchanged: stay above
+		// the ground straight beneath it, at most 200 cm up, no tilt.
+		constexpr float MaxRaise = 200.f;
+		const FVector Top = CameraLocation + FVector(0, 0, Floor + MaxRaise + CameraGroundClearance);
 		const FVector Bottom = CameraLocation + FVector(0, 0, Floor - 500.f);
 		FHitResult Hit;
 		const FCollisionObjectQueryParams Static(ECC_WorldStatic);
 		if (GetWorld()->LineTraceSingleByObjectType(Hit, Top, Bottom, Static, FCollisionQueryParams(TEXT("WitchBattleCamera"), false)) && !Hit.bStartPenetrating)
 		{
-			Raise = FMath::Clamp(Hit.ImpactPoint.Z + CameraGroundClearance - (CameraLocation.Z + Floor), 0.f, MaxCameraGroundRaise);
+			Raise = FMath::Clamp(Hit.ImpactPoint.Z + CameraGroundClearance - (CameraLocation.Z + Floor), 0.f, MaxRaise);
 		}
 	}
 	if (bCameraFloorOffsetValid)
@@ -301,7 +303,7 @@ float ANightSkyWTGameState::GetCameraFloorOffset(const FVector& CameraLocation)
 	}
 	bCameraFloorOffsetValid = true;
 	// Tilt down by the angle the rise added, so the camera keeps looking where it did.
-	CameraPitchOffset = Local.Y > 1.f ? -FMath::RadiansToDegrees(FMath::Atan2(CameraGroundRaise, Local.Y)) * CameraRaiseTilt : 0.f;
+	CameraPitchOffset = !CameraGround.IsEmpty() && Local.Y > 1.f ? -FMath::RadiansToDegrees(FMath::Atan2(CameraGroundRaise, Local.Y)) * CameraRaiseTilt : 0.f;
 	return CameraFloorOffset + CameraGroundRaise;
 }
 
