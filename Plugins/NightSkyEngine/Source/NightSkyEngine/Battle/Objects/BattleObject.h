@@ -1210,6 +1210,9 @@ public:
 	//set push width extend
 	UFUNCTION(BlueprintCallable)
 	void SetPushWidthExtend(int32 Extend);
+	//Madrone change: an object's push box. Players get theirs from their character data.
+	UFUNCTION(BlueprintCallable)
+	void SetPushBox(int32 Width, int32 Height, int32 HeightLow = 0);
 	//creates common particle
 	UFUNCTION(BlueprintCallable)
 	void CreateCommonParticle(FGameplayTag Name, EPosType PosType, FVector Offset = FVector::ZeroVector,

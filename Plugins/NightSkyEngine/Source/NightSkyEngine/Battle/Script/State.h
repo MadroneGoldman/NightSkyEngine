@@ -347,7 +347,7 @@ struct FStateCPUData
  * Provides functionality for the current character behavior, such as frame data, animations, and more.
  */
 UCLASS(BlueprintType, Blueprintable)
-class UState : public USerializableObj
+class NIGHTSKYENGINE_API UState : public USerializableObj // Madrone change: exported, so other modules can make states in C++
 {
 	GENERATED_BODY()
 

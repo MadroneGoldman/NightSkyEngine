@@ -279,6 +279,7 @@ void ANightSkyGameState::RoundInit()
 
 		UpdateCamera();
 		CallBattleExtension(BattleExtension_RoundInit);
+		OnRoundInit.Broadcast(this); //Madrone change
 	}
 	else if (BattleState.BattleFormat == EBattleFormat::Tag)
 	{
@@ -334,6 +335,7 @@ void ANightSkyGameState::RoundInit()
 
 		UpdateCamera();
 		CallBattleExtension(BattleExtension_RoundInit);
+		OnRoundInit.Broadcast(this); //Madrone change
 	}
 	else
 	{
@@ -368,6 +370,7 @@ void ANightSkyGameState::RoundInit()
 
 		UpdateCamera();
 		CallBattleExtension(BattleExtension_RoundInit);
+		OnRoundInit.Broadcast(this); //Madrone change
 	}
 
 	BattleState.ScreenData.TargetObjects.AddUnique(GetMainPlayer(true));
@@ -1017,6 +1020,16 @@ void ANightSkyGameState::HandlePushCollision() const
 			}
 		}
 	}
+	// Madrone change: on-screen fighters and neutral objects (battle props) with push collision push each other.
+	for (int i = 0; i < SortedObjects.Num() && i < BattleState.ActiveObjectCount; i++)
+	{
+		ABattleObject* Object = SortedObjects[i];
+		if (Object->IsPlayer || !Object->bIsNeutral || !(Object->MiscFlags & MISC_PushCollisionActive)) continue;
+		for (APlayerObject* Fighter : Players)
+		{
+			if (Fighter->PlayerFlags & PLF_IsOnScreen) Fighter->HandlePushCollision(Object);
+		}
+	}
 }
 
 void ANightSkyGameState::HandleHitCollision() const
@@ -1029,9 +1042,14 @@ void ANightSkyGameState::HandleHitCollision() const
 		{
 			if (j == BattleState.ActiveObjectCount)
 				break;
-			if ( (SortedObjects[i]->Player->PlayerIndex != SortedObjects[j]->Player->PlayerIndex || (SortedObjects[i]->bIsNeutral && (SortedObjects[i] != SortedObjects[j]) ))
-				&& SortedObjects[i]->Player->PlayerFlags & PLF_IsOnScreen
-				&& SortedObjects[j]->Player->PlayerFlags & PLF_IsOnScreen)
+			// Madrone change: a neutral object (a battle prop) hits and is hit by everything but itself, its owner included,
+			// and is on screen whether or not the player that owns it is. Pairs without one are unchanged.
+			const bool bNeutralPair = (SortedObjects[i]->bIsNeutral || SortedObjects[j]->bIsNeutral) && SortedObjects[i] != SortedObjects[j];
+			const bool bOnScreenI = SortedObjects[i]->bIsNeutral || SortedObjects[i]->Player->PlayerFlags & PLF_IsOnScreen;
+			const bool bOnScreenJ = SortedObjects[j]->bIsNeutral || SortedObjects[j]->Player->PlayerFlags & PLF_IsOnScreen;
+			if ( (SortedObjects[i]->Player->PlayerIndex != SortedObjects[j]->Player->PlayerIndex || bNeutralPair)
+				&& bOnScreenI
+				&& bOnScreenJ)
 			{
 				SortedObjects[i]->HandleCustomCollision_PreHit(SortedObjects[j]);
 				SortedObjects[i]->HandleClashCollision(SortedObjects[j]);

@@ -16,6 +16,11 @@ constexpr int32 MaxRollbackFrames = 1;
 constexpr float OneFrame = 0.0166666666;
 
 class ANightSkyBattleHudActor;
+class ANightSkyGameState;
+
+/** Madrone change: a round started and every pooled object was reset, so objects that should be there from the start of
+ * each round (battle props) can be added now. Also fires for the first round, inside Init. */
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnNightSkyRoundInit, ANightSkyGameState*);
 
 // Battle data
 
@@ -298,6 +303,8 @@ public:
 	UPROPERTY()
 	TArray<UBattleExtension*> BattleExtensions = {};
 	TArray<FGameplayTag> BattleExtensionNames = {};
+
+	FOnNightSkyRoundInit OnRoundInit; //Madrone change
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Assets)
 	UBattleExtensionData* BattleExtensionData = {};

@@ -550,8 +550,12 @@ void ABattleObject::HandlePushCollision(ABattleObject* OtherObj)
 
 void ABattleObject::HandleHitCollision(ABattleObject* AttackedObj)
 {
+	// Madrone change: a neutral object (a battle prop) isn't invulnerable just because the player that owns it is.
+	const bool bAttackedInvulnerable = AttackedObj->bIsNeutral && !AttackedObj->IsPlayer
+		                                   ? false
+		                                   : AttackedObj->Player->IsInvulnerable(this);
 	if (AttackFlags & ATK_IsAttacking && AttackFlags & ATK_HitActive && AttackedObj->ObjectsToIgnoreHitsFrom.Find(this)
-		== INDEX_NONE && !AttackedObj->Player->IsInvulnerable(this))
+		== INDEX_NONE && !bAttackedInvulnerable)
 	{
 		auto AttackedPlayer = Cast<APlayerObject>(AttackedObj);
 		if (!AttackedPlayer)
@@ -3340,6 +3344,15 @@ void ABattleObject::SetPushCollisionActive(bool Active)
 void ABattleObject::SetPushWidthExtend(int32 Extend)
 {
 	PushWidthExtend = Extend;
+}
+
+//Madrone change
+void ABattleObject::SetPushBox(const int32 Width, const int32 Height, const int32 HeightLow)
+{
+	PushWidth = Width;
+	PushHeight = Height;
+	PushHeightLow = HeightLow;
+	CalculatePushbox();
 }
 
 void ABattleObject::CreateCommonParticle(FGameplayTag Name, EPosType PosType, FVector Offset, FRotator Rotation)
