@@ -42,19 +42,36 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Battle Floor")
 	TArray<FVector2D> GetBattleFloorPoints() const;
 
-	/** Most the camera rises to stay above the ground beneath it (cm). */
-	UPROPERTY(EditAnywhere, Category = "Battle Floor")
-	float MaxCameraGroundRaise = 200.f;
-	/** How far above the ground beneath it the camera stays (cm). */
-	UPROPERTY(EditAnywhere, Category = "Battle Floor")
+	/** Madrone change. The ground between the fight's line and the camera, measured once at battle start (by the caller,
+	 * which knows what counts as ground): heights in cm above BattleSceneTransform, NumX along the line from OriginXCm and
+	 * NumY away from it towards the camera from 0, StepCm apart. Below -1e5: nothing there. The camera rises over it. */
+	UFUNCTION(BlueprintCallable, Category = "Battle Floor")
+	void SetCameraGround(const TArray<float>& HeightsCm, int32 NumX, int32 NumY, float OriginXCm, float StepCm);
+
+	/** Most the camera rises to keep the ground out of the way (cm). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battle Camera")
+	float MaxCameraGroundRaise = 300.f;
+	/** How far above the ground around it the camera stays (cm). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battle Camera")
 	float CameraGroundClearance = 60.f;
-	/** How quickly the camera follows the floor's height. */
-	UPROPERTY(EditAnywhere, Category = "Battle Floor")
+	/** How much of the fighters, from their feet up, the ground between them and the camera must never hide (cm). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battle Camera")
+	float CameraSightHeight = 40.f;
+	/** When the camera rises over the ground, how much it tilts down to keep the fight framed: 1 = looks at the same
+	 * spot as before rising, 0 = only rises (the fight sinks on screen). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battle Camera")
+	float CameraRaiseTilt = 1.f;
+	/** How quickly the camera follows the floor's height and its rise over the ground. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battle Camera")
 	float CameraFloorFollowSpeed = 4.f;
+	/** The camera's rise over the ground right now, after smoothing (cm). For tests. */
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Camera")
+	float CameraGroundRaise = 0.f;
 
 	virtual bool HasBattleFloor() const override { return FloorPoints.Num() >= 2; }
 	virtual int32 GetFloorHeightAt(int32 InPosX) const override;
 	virtual float GetCameraFloorOffset(const FVector& CameraLocation) override;
+	virtual float GetCameraPitchOffset() const override { return CameraPitchOffset; }
 	
 protected:
 	// Called when the game starts or when spawned
@@ -68,6 +85,15 @@ private:
 	TArray<FIntPoint> FloorPoints;
 	float CameraFloorOffset = 0.f;
 	bool bCameraFloorOffsetValid = false;
+	float CameraPitchOffset = 0.f;
+	TArray<float> CameraGround;
+	int32 CameraGroundNumX = 0;
+	int32 CameraGroundNumY = 0;
+	float CameraGroundOriginX = 0.f;
+	float CameraGroundStep = 50.f;
+
+	/** How much the camera has to rise so the ground stays out of the way, from CameraGround (cm). */
+	float CameraRaiseOverGround(float CameraX, float CameraDepth, float CameraHeight) const;
 
 	int32 FloorHeightOnLine(int32 InPosX) const;
 	void DrawBattleFloor() const;

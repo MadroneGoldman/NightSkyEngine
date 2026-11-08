@@ -1487,6 +1487,7 @@ void ANightSkyGameState::UpdateCamera()
 		FRotator CameraRotation = BattleSceneTransform.GetRotation().Rotator();
 		CameraRotation.Yaw -= 90;
 		CameraRotation.Pitch -= CameraYaw;
+		CameraRotation.Pitch += GetCameraPitchOffset(); // Madrone change
 		if (BattleState.CurrentSequenceTime == -1)
 		{
 			BattleState.OrthoBlendActive = 1;

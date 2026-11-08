@@ -402,6 +402,8 @@ public:
 	virtual int32 GetFloorHeightAt(int32 InPosX) const { return 0; }
 	/** How far (cm) the battle camera rises at this world location. Display only. */
 	virtual float GetCameraFloorOffset(const FVector& CameraLocation) { return 0.f; }
+	/** Madrone change: degrees added to the battle camera's pitch (negative looks down). Called after GetCameraFloorOffset. */
+	virtual float GetCameraPitchOffset() const { return 0.f; }
 
 protected:
 	int32 CreateChecksum();

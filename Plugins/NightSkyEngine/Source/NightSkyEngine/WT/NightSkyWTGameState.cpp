@@ -153,6 +153,61 @@ void ANightSkyWTGameState::ClearBattleFloor()
 	FloorPoints.Reset();
 	CameraFloorOffset = 0.f;
 	bCameraFloorOffsetValid = false;
+	CameraPitchOffset = 0.f;
+	CameraGroundRaise = 0.f;
+	CameraGround.Reset();
+	CameraGroundNumX = CameraGroundNumY = 0;
+}
+
+void ANightSkyWTGameState::SetCameraGround(const TArray<float>& HeightsCm, const int32 NumX, const int32 NumY, const float OriginXCm, const float StepCm)
+{
+	CameraGround.Reset();
+	CameraGroundNumX = CameraGroundNumY = 0;
+	if (NumX < 1 || NumY < 1 || StepCm <= 0.f || HeightsCm.Num() != NumX * NumY) return;
+	CameraGround = HeightsCm;
+	CameraGroundNumX = NumX;
+	CameraGroundNumY = NumY;
+	CameraGroundOriginX = OriginXCm;
+	CameraGroundStep = StepCm;
+}
+
+float ANightSkyWTGameState::CameraRaiseOverGround(const float CameraX, const float CameraDepth, const float CameraHeight) const
+{
+	// Presentation only, so floats are fine here: the camera isn't part of the fight's state (and NSE doesn't move it while
+	// re-running frames after a rollback).
+	if (CameraGround.IsEmpty() || CameraDepth <= 1.f) return 0.f;
+	// NSE's battle camera: 54 degrees across. Half its width at a distance is that distance x tan(27).
+	static const float HalfViewTan = FMath::Tan(FMath::DegreesToRadians(27.f));
+	const float MinDepth = 100.f; // nearer the line than this is the floor the fighters stand on
+	const float NearReach = 100.f; // around the camera itself, it keeps Clearance above the ground
+	float Needed = -UE_BIG_NUMBER;
+	const int32 LastRow = FMath::Min(CameraGroundNumY - 1, FMath::CeilToInt((CameraDepth + NearReach) / CameraGroundStep));
+	for (int32 Row = FMath::CeilToInt(MinDepth / CameraGroundStep); Row <= LastRow; Row++)
+	{
+		const float Depth = Row * CameraGroundStep;
+		const float Ahead = CameraDepth - Depth; // distance from the camera, towards the line
+		const float Reach = Ahead > 0.f ? HalfViewTan * Ahead : NearReach;
+		const int32 First = FMath::Max(0, FMath::FloorToInt((CameraX - Reach - CameraGroundOriginX) / CameraGroundStep));
+		const int32 Last = FMath::Min(CameraGroundNumX - 1, FMath::CeilToInt((CameraX + Reach - CameraGroundOriginX) / CameraGroundStep));
+		for (int32 Column = First; Column <= Last; Column++)
+		{
+			const float Ground = CameraGround[Row * CameraGroundNumX + Column];
+			if (Ground < -1e5f) continue;
+			const float X = CameraGroundOriginX + Column * CameraGroundStep;
+			if (FMath::Abs(Ahead) <= NearReach && FMath::Abs(X - CameraX) <= NearReach)
+			{
+				Needed = FMath::Max(Needed, Ground + CameraGroundClearance); // the camera itself stays above the ground
+			}
+			if (Ahead <= 0.f) continue;
+			// The sight line from the camera through this spot reaches the fight's line at TargetX: the ground here must stay
+			// under the line from the camera to CameraSightHeight above the floor there.
+			const float Share = Depth / CameraDepth; // 0 at the fight's line, 1 at the camera
+			const float TargetX = CameraX + (X - CameraX) / (1.f - Share);
+			const float Target = GetFloorHeightAt(FMath::RoundToInt32(TargetX * COORD_SCALE)) / COORD_SCALE + CameraSightHeight;
+			Needed = FMath::Max(Needed, Target + (Ground - Target) / Share);
+		}
+	}
+	return FMath::Clamp(Needed - CameraHeight, 0.f, MaxCameraGroundRaise);
 }
 
 TArray<FVector2D> ANightSkyWTGameState::GetBattleFloorPoints() const
@@ -187,19 +242,41 @@ float ANightSkyWTGameState::GetCameraFloorOffset(const FVector& CameraLocation)
 {
 	if (!HasBattleFloor()) return 0.f;
 	// Follow the floor under what's on screen...
-	float Target = GetFloorHeightAt(BattleState.ScreenData.FinalScreenX * 1000) / COORD_SCALE;
-	// ...and stay above the ground beneath the camera, which is off to the side of the fight's line.
-	const FVector Top = CameraLocation + FVector(0, 0, Target + MaxCameraGroundRaise + CameraGroundClearance);
-	const FVector Bottom = CameraLocation + FVector(0, 0, Target - 500.f);
-	FHitResult Hit;
-	const FCollisionObjectQueryParams Static(ECC_WorldStatic);
-	if (GetWorld()->LineTraceSingleByObjectType(Hit, Top, Bottom, Static, FCollisionQueryParams(TEXT("WitchBattleCamera"), false)) && !Hit.bStartPenetrating)
+	const float Floor = GetFloorHeightAt(BattleState.ScreenData.FinalScreenX * 1000) / COORD_SCALE;
+	const float DeltaSeconds = GetWorld()->GetDeltaSeconds();
+	float Raise = 0.f;
+	const FVector Local = BattleSceneTransform.GetRotation().UnrotateVector(CameraLocation - BattleSceneTransform.GetLocation());
+	if (!CameraGround.IsEmpty())
 	{
-		Target += FMath::Clamp(Hit.ImpactPoint.Z + CameraGroundClearance - (CameraLocation.Z + Target), 0.f, MaxCameraGroundRaise);
+		// ...and rise as much as the ground between the camera and the fight needs (measured at battle start).
+		Raise = CameraRaiseOverGround(Local.X, Local.Y, Local.Z + Floor);
 	}
-	CameraFloorOffset = bCameraFloorOffsetValid ? FMath::FInterpTo(CameraFloorOffset, Target, GetWorld()->GetDeltaSeconds(), CameraFloorFollowSpeed) : Target;
+	else
+	{
+		// No ground measured: stay above the ground straight beneath the camera.
+		const FVector Top = CameraLocation + FVector(0, 0, Floor + MaxCameraGroundRaise + CameraGroundClearance);
+		const FVector Bottom = CameraLocation + FVector(0, 0, Floor - 500.f);
+		FHitResult Hit;
+		const FCollisionObjectQueryParams Static(ECC_WorldStatic);
+		if (GetWorld()->LineTraceSingleByObjectType(Hit, Top, Bottom, Static, FCollisionQueryParams(TEXT("WitchBattleCamera"), false)) && !Hit.bStartPenetrating)
+		{
+			Raise = FMath::Clamp(Hit.ImpactPoint.Z + CameraGroundClearance - (CameraLocation.Z + Floor), 0.f, MaxCameraGroundRaise);
+		}
+	}
+	if (bCameraFloorOffsetValid)
+	{
+		CameraFloorOffset = FMath::FInterpTo(CameraFloorOffset, Floor, DeltaSeconds, CameraFloorFollowSpeed);
+		CameraGroundRaise = FMath::FInterpTo(CameraGroundRaise, Raise, DeltaSeconds, CameraFloorFollowSpeed);
+	}
+	else
+	{
+		CameraFloorOffset = Floor;
+		CameraGroundRaise = Raise;
+	}
 	bCameraFloorOffsetValid = true;
-	return CameraFloorOffset;
+	// Tilt down by the angle the rise added, so the camera keeps looking where it did.
+	CameraPitchOffset = Local.Y > 1.f ? -FMath::RadiansToDegrees(FMath::Atan2(CameraGroundRaise, Local.Y)) * CameraRaiseTilt : 0.f;
+	return CameraFloorOffset + CameraGroundRaise;
 }
 
 void ANightSkyWTGameState::DrawBattleFloor() const
