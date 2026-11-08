@@ -1629,6 +1629,7 @@ void ABattleObject::TriggerEvent(EEventType EventType, FGameplayTag StateMachine
 	UFunction* const Func = State->FindFunction(EventHandlers[EventType].FunctionName);
 	if (IsValid(Func) && Func->ParmsSize == 0)
 	{
+		if (!IsPlayer) State->Parent = this; // Madrone change: as for subroutines above
 		State->ProcessEvent(Func, nullptr);
 	}
 }
@@ -1851,6 +1852,8 @@ void ABattleObject::LoadForRollback(const unsigned char* Buffer)
 			ObjectState = Player->ObjectStates[StateIndex];
 			ObjectState->Parent = this;
 		}
+		// Madrone change: lets the state put back what isn't in the saved bytes (e.g. boxes it builds itself).
+		if (IsValid(ObjectState)) ObjectState->OnRollbackLoaded();
 	}
 }
 
@@ -2140,6 +2143,7 @@ void ABattleObject::FuncCall(const FName& FuncName) const
 	UFunction* const Func = CurrentState->FindFunction(FuncName);
 	if (IsValid(Func) && Func->ParmsSize == 0)
 	{
+		if (!IsPlayer) CurrentState->Parent = const_cast<ABattleObject*>(this); // Madrone change: see Update
 		CurrentState->ProcessEvent(Func, nullptr);
 	}
 }
@@ -2333,6 +2337,7 @@ void ABattleObject::Update()
 		
 		GameState->SetScreenBounds();
 		
+		ObjectState->Parent = this; // Madrone change: the state may be shared with other objects since a rollback load
 		if (ActionTime == 0)
 		{
 			ObjectState->Init();
@@ -2639,7 +2644,11 @@ void ABattleObject::GotoLabel(FGameplayTag InName)
 	LabelName = InName;
 	GotoLabelActive = true;
 
-	if (!Player) ObjectState->CallExec();
+	if (!Player)
+	{
+		ObjectState->Parent = this; // Madrone change
+		ObjectState->CallExec();
+	}
 	else Player->PrimaryStateMachine.Update();
 }
 

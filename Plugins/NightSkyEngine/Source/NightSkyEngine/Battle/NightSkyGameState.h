@@ -305,6 +305,8 @@ public:
 	TArray<FGameplayTag> BattleExtensionNames = {};
 
 	FOnNightSkyRoundInit OnRoundInit; //Madrone change
+	/** Madrone change: true while frames are being re-run after a rollback. Skip anything that shouldn't happen twice. */
+	bool IsResimulating() const { return bIsResimulating; }
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Assets)
 	UBattleExtensionData* BattleExtensionData = {};

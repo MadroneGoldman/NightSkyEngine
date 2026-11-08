@@ -94,7 +94,9 @@ void ANightSkyWTGameState::Init(APlayerObject* P1, APlayerObject* P2,APlayerObje
 		P2->SetActorTransform(BattleSceneTransform);
 		P2->PlayerFlags |= PLF_IsOnScreen;
 		SortedObjects.Add(P2);
-		P2->bIsCpu = true;
+		// Madrone change: under the synctest runner the opponents are local players (recorded inputs), since NSE's CPU
+		// runs outside rollback and a synctest can only pass without it.
+		P2->bIsCpu = !GameInstance || GameInstance->FighterRunner != SyncTest;
 		P2->SpawnDefaultController();
 		P2->InitPlayer();
 		P2->GameState = this;
@@ -109,7 +111,7 @@ void ANightSkyWTGameState::Init(APlayerObject* P1, APlayerObject* P2,APlayerObje
 				Players.Add(P2Ally);
 				P2Ally->SetActorTransform(BattleSceneTransform);
 				SortedObjects.Add(P2Ally);
-				P2Ally->bIsCpu = true;
+				P2Ally->bIsCpu = !GameInstance || GameInstance->FighterRunner != SyncTest; // Madrone change
 				P2Ally->SpawnDefaultController();
 				P2Ally->InitPlayer();
 				P2Ally->GameState = this;

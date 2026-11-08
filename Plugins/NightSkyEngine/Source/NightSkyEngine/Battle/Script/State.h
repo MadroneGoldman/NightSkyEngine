@@ -460,6 +460,10 @@ public:
 	 */
 	virtual void CallExec();
 
+	/** Madrone change: after a rollback load of an object running this state (Parent is that object). Rebuild anything
+	 * the state keeps outside the saved bytes, such as boxes it makes itself. */
+	virtual void OnRollbackLoaded() {}
+
 	/**
 	 * Called every frame to update the state.
 	 */

@@ -169,8 +169,14 @@ SyncTestBackend::RaiseSyncError(const char *fmt, ...)
    va_end(args);
 
    puts(buf);
-   EndLog();
-   DebugBreak();
+   // Madrone change: without a debugger, DebugBreak crashes the editor. Log the mismatch and keep running instead, so a
+   // synctest can be run from a script and its errors read from the log.
+   UE_LOG(LogTemp, Error, TEXT("GGPO synctest: %hs"), buf);
+   if (FPlatformMisc::IsDebuggerPresent())
+   {
+      EndLog();
+      DebugBreak();
+   }
 }
 
 GGPOErrorCode
