@@ -48,6 +48,11 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Battle Floor")
 	void SetCameraGround(const TArray<float>& HeightsCm, int32 NumX, int32 NumY, float OriginXCm, float StepCm);
 
+	/** Madrone change, for debugging: draws the measured camera ground as points for Seconds (green low, red high; the
+	 * fight's line in magenta). */
+	UFUNCTION(BlueprintCallable, Category = "Battle Floor")
+	void ShowCameraGround(float Seconds = 10.f) const;
+
 	/** Most the camera rises to keep the ground out of the way (cm). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battle Camera")
 	float MaxCameraGroundRaise = 300.f;

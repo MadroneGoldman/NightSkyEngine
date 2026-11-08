@@ -171,6 +171,32 @@ void ANightSkyWTGameState::SetCameraGround(const TArray<float>& HeightsCm, const
 	CameraGroundStep = StepCm;
 }
 
+void ANightSkyWTGameState::ShowCameraGround(const float Seconds) const
+{
+	if (CameraGround.IsEmpty()) return;
+	float Low = UE_BIG_NUMBER, High = -UE_BIG_NUMBER;
+	for (const float Height : CameraGround)
+	{
+		if (Height < -1e5f) continue;
+		Low = FMath::Min(Low, Height);
+		High = FMath::Max(High, Height);
+	}
+	for (int32 Row = 0; Row < CameraGroundNumY; Row++)
+	{
+		for (int32 Column = 0; Column < CameraGroundNumX; Column++)
+		{
+			const float Height = CameraGround[Row * CameraGroundNumX + Column];
+			if (Height < -1e5f) continue;
+			const float Share = High > Low ? (Height - Low) / (High - Low) : 0.f;
+			const FVector Point = BattleSceneTransform.TransformPositionNoScale(FVector(CameraGroundOriginX + Column * CameraGroundStep, Row * CameraGroundStep, Height));
+			DrawDebugPoint(GetWorld(), Point, 6.f, FLinearColor::LerpUsingHSV(FLinearColor::Green, FLinearColor::Red, Share).ToFColor(true), false, Seconds);
+		}
+	}
+	const FVector A = BattleSceneTransform.TransformPositionNoScale(FVector(CameraGroundOriginX, 0, 0));
+	const FVector B = BattleSceneTransform.TransformPositionNoScale(FVector(CameraGroundOriginX + (CameraGroundNumX - 1) * CameraGroundStep, 0, 0));
+	DrawDebugLine(GetWorld(), A, B, FColor::Magenta, false, Seconds, 0, 4.f);
+}
+
 float ANightSkyWTGameState::CameraRaiseOverGround(const float CameraX, const float CameraDepth, const float CameraHeight) const
 {
 	// Presentation only, so floats are fine here: the camera isn't part of the fight's state (and NSE doesn't move it while
