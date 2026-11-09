@@ -32,6 +32,10 @@ public class NightSkyEngineEditor : ModuleRules
                 "UnrealEd",
                 "AssetRegistry",
                 "Json",
+                "PropertyEditor",
+                "ContentBrowser",
+                "InputCore",
+                "ToolMenus",
             }
         );
     }
