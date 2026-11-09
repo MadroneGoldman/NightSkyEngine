@@ -73,6 +73,19 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Battle Camera")
 	float CameraGroundRaise = 0.f;
 
+	/** Madrone change. Walls from the level (actors tagged NSE_Wall, found by the caller at battle start): cm along the
+	 * fight's line from BattleSceneTransform, left (negative) and right (positive). They narrow the stage: fighters and the
+	 * camera stop there. bHasLeft / bHasRight false keeps that side's normal stage edge. Kept for every round. */
+	UFUNCTION(BlueprintCallable, Category = "Battle Floor")
+	void SetStageWalls(bool bHasLeft, float LeftCm, bool bHasRight, float RightCm);
+	UFUNCTION(BlueprintCallable, Category = "Battle Floor")
+	void ClearStageWalls();
+	/** The stage edges in effect, cm along the line (the level's walls or the normal stage edges). */
+	UFUNCTION(BlueprintCallable, Category = "Battle Floor")
+	FVector2D GetStageWallsCm() const;
+
+	virtual void ApplyStageWalls(FScreenData& Screen) const override;
+
 	virtual bool HasBattleFloor() const override { return FloorPoints.Num() >= 2; }
 	virtual int32 GetFloorHeightAt(int32 InPosX) const override;
 	virtual float GetCameraFloorOffset(const FVector& CameraLocation) override;
@@ -100,8 +113,15 @@ private:
 	/** How much the camera has to rise so the ground stays out of the way, from CameraGround (cm). */
 	float CameraRaiseOverGround(float CameraX, float CameraDepth, float CameraHeight) const;
 
+	/** Stage edges from the level's walls, in ScreenData units (cm / OBJ_SCALE). Never change during a fight. */
+	bool bHasWallLeft = false;
+	bool bHasWallRight = false;
+	int32 WallLeft = 0;
+	int32 WallRight = 0;
+
 	int32 FloorHeightOnLine(int32 InPosX) const;
 	void DrawBattleFloor() const;
+	void DrawStageWalls() const;
 
 public:
 	

@@ -404,6 +404,9 @@ public:
 	virtual float GetCameraFloorOffset(const FVector& CameraLocation) { return 0.f; }
 	/** Madrone change: degrees added to the battle camera's pitch (negative looks down). Called after GetCameraFloorOffset. */
 	virtual float GetCameraPitchOffset() const { return 0.f; }
+	/** Madrone change: called whenever the screen data is reset to the defaults (each round), so a stage can narrow its
+	 * bounds (WT battles: walls in the level). Must give the same result every time: it's part of the fight's state. */
+	virtual void ApplyStageWalls(FScreenData& Screen) const {}
 
 protected:
 	int32 CreateChecksum();

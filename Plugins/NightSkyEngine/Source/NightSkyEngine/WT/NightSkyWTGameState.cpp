@@ -318,11 +318,57 @@ void ANightSkyWTGameState::DrawBattleFloor() const
 	}
 }
 
+void ANightSkyWTGameState::SetStageWalls(const bool bHasLeft, const float LeftCm, const bool bHasRight, const float RightCm)
+{
+	bHasWallLeft = bHasLeft;
+	bHasWallRight = bHasRight;
+	WallLeft = bHasLeft ? FMath::RoundToInt32(LeftCm / OBJ_SCALE) : 0;
+	WallRight = bHasRight ? FMath::RoundToInt32(RightCm / OBJ_SCALE) : 0;
+	ApplyStageWalls(BattleState.ScreenData);
+}
+
+void ANightSkyWTGameState::ClearStageWalls()
+{
+	bHasWallLeft = bHasWallRight = false;
+	WallLeft = WallRight = 0;
+	BattleState.ScreenData.StageBoundsLeft = Cast<ANightSkyGameState>(GetClass()->GetDefaultObject())->BattleState.ScreenData.StageBoundsLeft;
+	BattleState.ScreenData.StageBoundsRight = Cast<ANightSkyGameState>(GetClass()->GetDefaultObject())->BattleState.ScreenData.StageBoundsRight;
+}
+
+void ANightSkyWTGameState::ApplyStageWalls(FScreenData& Screen) const
+{
+	// Walls only ever narrow the stage: a wall past the normal edge changes nothing.
+	if (bHasWallLeft) Screen.StageBoundsLeft = FMath::Max(Screen.StageBoundsLeft, WallLeft);
+	if (bHasWallRight) Screen.StageBoundsRight = FMath::Min(Screen.StageBoundsRight, WallRight);
+}
+
+FVector2D ANightSkyWTGameState::GetStageWallsCm() const
+{
+	return FVector2D(BattleState.ScreenData.StageBoundsLeft * OBJ_SCALE, BattleState.ScreenData.StageBoundsRight * OBJ_SCALE);
+}
+
+void ANightSkyWTGameState::DrawStageWalls() const
+{
+	// Like the floor: lines in the fight's plane. Each stage edge as a post from the floor up; the level's walls are thicker.
+	const FTransform& Scene = BattleSceneTransform;
+	const auto Post = [&](const int32 Bound, const bool bFromLevel)
+	{
+		const float X = Bound * OBJ_SCALE;
+		const float Floor = GetFloorHeightAt(Bound * 1000) / COORD_SCALE;
+		const FVector A = Scene.GetRotation().RotateVector(FVector(X, 0, Floor)) + Scene.GetLocation();
+		const FVector B = Scene.GetRotation().RotateVector(FVector(X, 0, Floor + 400.f)) + Scene.GetLocation();
+		DrawDebugLine(GetWorld(), A, B, FColor::Magenta, false, -1.f, 255, bFromLevel ? 6.f : 2.f);
+	};
+	Post(BattleState.ScreenData.StageBoundsLeft, bHasWallLeft && BattleState.ScreenData.StageBoundsLeft == WallLeft);
+	Post(BattleState.ScreenData.StageBoundsRight, bHasWallRight && BattleState.ScreenData.StageBoundsRight == WallRight);
+}
+
 void ANightSkyWTGameState::Tick(float DeltaTime)
 {
 	AActor::Tick(DeltaTime);
 
 	if (bViewCollision && HasBattleFloor()) DrawBattleFloor();
+	if (bViewCollision && bIsBattling) DrawStageWalls(); // Madrone change
 	
 	if (bIsBattling && IsValid(FighterRunner))
 		FighterRunner->Update(DeltaTime);

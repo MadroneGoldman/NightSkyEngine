@@ -253,6 +253,7 @@ void ANightSkyGameState::RoundInit()
 	if (BattleState.BattleFormat == EBattleFormat::Rounds || BattleState.RoundCount == 1)
 	{
 		BattleState.ScreenData = Cast<ANightSkyGameState>(GetClass()->GetDefaultObject())->BattleState.ScreenData;
+		ApplyStageWalls(BattleState.ScreenData); // Madrone change
 
 		if (!GameInstance->IsTraining)
 			BattleState.TimeUntilRoundStart = BattleState.MaxTimeUntilRoundStart;
@@ -301,6 +302,7 @@ void ANightSkyGameState::RoundInit()
 	else if (BattleState.BattleFormat == EBattleFormat::NickTour) //Madrone change this whole round init block
 	{
 		BattleState.ScreenData = Cast<ANightSkyGameState>(GetClass()->GetDefaultObject())->BattleState.ScreenData;
+		ApplyStageWalls(BattleState.ScreenData); // Madrone change
 
 		const bool IsP1 = GetMainPlayer(true)->CurrentHealth == 0;
 		GetMainPlayer(IsP1)->SetOnScreen(false);
@@ -340,6 +342,7 @@ void ANightSkyGameState::RoundInit()
 	else
 	{
 		BattleState.ScreenData = Cast<ANightSkyGameState>(GetClass()->GetDefaultObject())->BattleState.ScreenData;
+		ApplyStageWalls(BattleState.ScreenData); // Madrone change
 
 		const bool IsP1 = GetMainPlayer(true)->CurrentHealth == 0;
 		GetMainPlayer(IsP1)->SetOnScreen(false);
@@ -963,6 +966,11 @@ void ANightSkyGameState::UpdateScreen()
 		ScreenData->ScreenBoundsLeft = ScreenData->StageBoundsLeft;
 		ScreenData->ScreenBoundsRight = ScreenData->StageBoundsRight;
 	}
+
+	// Madrone change: the stage's edges are walls even when the stage is narrower than the screen (WT walls). Normally the
+	// screen is already inside them, so this changes nothing there.
+	ScreenData->ScreenBoundsLeft = FMath::Max(ScreenData->ScreenBoundsLeft, ScreenData->StageBoundsLeft);
+	ScreenData->ScreenBoundsRight = FMath::Min(ScreenData->ScreenBoundsRight, ScreenData->StageBoundsRight);
 
 	ScreenData->ScreenBoundsTop = 106432 / (ScreenData->ZoomOutBeginX * 1000 / ScreenData->ScreenWorldWidth) +
 		368000 / (ScreenData->ZoomOutBeginX * 1000 / ScreenData->ScreenWorldWidth) + ScreenData->ScreenWorldCenterY;
