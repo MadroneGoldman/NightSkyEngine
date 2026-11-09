@@ -1996,62 +1996,22 @@ void ABattleObject::UpdateVisualsNoRollback()
 		}
 		else
 		{
-			FName UsedSocketName  = SocketName;
-			FVector FinalSocketOffset = SocketOffset;
-			FVector FinalSocketRotationOffset = SocketRotationOffset;
-			// FIXME: no braces on this if, so only the UsedSocketName line is conditional.
-			// The FinalSocketOffset.Y / FinalSocketRotationOffset.Y lines below run for both directions.
-			// (Those two values are currently unused further down, so this has no effect yet.)
-			if (Direction != DIR_Right)
-				UsedSocketName  = SocketNameLeft;
-				FinalSocketOffset.Y = -SocketOffset.Y;
-				//FinalSocketRotationOffset.Y = SocketRotationOffset.Y + 180.0f; // add y +180
-				FinalSocketRotationOffset.Y = SocketRotationOffset.Y * -1.0f;
-			const auto Obj = GetBattleObject(SocketObj);
-			TArray<USkeletalMeshComponent*> SocketSkeletalMeshComponents;
-			Obj->GetComponents(USkeletalMeshComponent::StaticClass(), SocketSkeletalMeshComponents);
-			for (const auto Component : SocketSkeletalMeshComponents)
+			// Madrone change: follow a socket. Facing left with mirrored animations, FSocketMirror places the object
+			// as the exact mirror image of its right-side placement (see SocketMirror.h for why and how).
+			FTransform ComponentSpace;
+			USkeletalMeshComponent* FollowedMesh = nullptr;
+			bool bMirrored = false;
+			if (GetSocketFollowTransform(ComponentSpace, FollowedMesh, bMirrored))
 			{
-				if (!Component->DoesSocketExist(UsedSocketName)) continue;
-				FVector SocketLocation;
-				FRotator SocketRotation;
-				
-				Component->GetSocketWorldLocationAndRotation(UsedSocketName, SocketLocation, SocketRotation);
-				
-
-				FTransform SocketTransform = Component->GetSocketTransform(UsedSocketName, RTS_Component);
-				
-				FTransform FinalLocalTransform = FTransform::Identity;
-				FinalLocalTransform.SetLocation(SocketTransform.TransformPosition(SocketOffset));
-				
-				FQuat OffsetQuat = FQuat::MakeFromEuler(SocketRotationOffset);
-				FinalLocalTransform.SetRotation(SocketTransform.GetRotation() * OffsetQuat);
-				
-				if (Direction != DIR_Right)
-				{
-					FPlane MirrorPlane(FVector(0.0f, 1.0f, 0.0f), 0.0f);
-					FinalLocalTransform.SetLocation(SocketTransform.TransformPosition(SocketOffset).MirrorByPlane(MirrorPlane));	
-					
-					///////////////
-					// 4. Mirror Rotation (Convert to FMatrix, mirror it, convert back)
-					/*
-					FMatrix SourceMatrix = FRotationMatrix(SocketTransform.GetRotation() * OffsetQuat);
-					FMatrix MirrorMatrix = FManipulationMatrix::Mirror(MirrorPlane.GetNormal());
-    
-					// Combine matrices to reflect the orientation axes
-					FMatrix MirroredMatrix = SourceMatrix * MirrorMatrix;
-					FRotator MirroredRot = MirroredMatrix.Rotator();
-					*/
-					////////////////
-					FQuat MirOffsetQuat = FQuat::MakeFromEuler(SocketRotationOffset);
-					FinalLocalTransform.SetRotation(SocketTransform.GetRotation() * MirOffsetQuat);
-				}
-				
-				FTransform ComponentWorldTransform = Component->GetComponentTransform();
-				FTransform SocketWorldTransform = FinalLocalTransform * ComponentWorldTransform;
-				
+				const FTransform SocketWorldTransform = ComponentSpace * FollowedMesh->GetComponentTransform();
 				SetActorLocation(SocketWorldTransform.GetLocation());
 				SetActorRotation(SocketWorldTransform.Rotator());
+				if (bMirrored)
+				{
+					// The mirroring is all in the rotation: undo the -1 X scale the flip code above gives
+					// left-facing objects, or the object would be mirrored twice.
+					SetActorScale3D(ObjectScale);
+				}
 			}
 		}
 	}
@@ -3639,29 +3599,95 @@ void ABattleObject::AttachToSocketOfObject(FName InSocketName, FVector Offset, F
 	SocketOffset = Offset;
 	SocketRotationOffset = RotationOffset;
 	
-	//Madrone change make left socket name
-	FString MutableString = InSocketName.ToString();
-	
-	if (MutableString.Contains("_l"))
-	{
-		MutableString.ReplaceInline(TEXT("l"), TEXT("r"), ESearchCase::CaseSensitive);
-		MutableString.ReplaceInline(TEXT("L"), TEXT("R"), ESearchCase::CaseSensitive);
-	}
-	else
-	{
-		MutableString.ReplaceInline(TEXT("r"), TEXT("l"), ESearchCase::CaseSensitive);
-		MutableString.ReplaceInline(TEXT("R"), TEXT("L"), ESearchCase::CaseSensitive);
-	}
-	
-	SocketNameLeft = FName(*MutableString);
+	// Madrone change: no left-hand socket name any more. The mirror partner bone is found per mesh by FSocketMirror,
+	// from the fighter's mirror table (or its naming rules), when the fighter faces left.
 }
 
 void ABattleObject::DetachFromSocket()
 {
 	SocketName = FName();
-	SocketNameLeft = FName();
 	SocketObj = OBJ_Self;
 	SocketOffset = FVector::ZeroVector;
+	SocketRotationOffset = FVector::ZeroVector;
+}
+
+bool ABattleObject::GetSocketFollowTransform(FTransform& OutComponentSpace, USkeletalMeshComponent*& OutMesh, bool& bOutMirrored)
+{
+	OutMesh = nullptr;
+	bOutMirrored = false;
+	if (SocketName == NAME_None)
+	{
+		return false;
+	}
+	ABattleObject* SocketOwner = GetBattleObject(SocketObj);
+	if (!SocketOwner)
+	{
+		return false;
+	}
+
+	// The mesh to follow, one mesh so the result is stable:
+	//  1. The fighter's body mesh, APlayerObject::GetBodyMesh() (implemented by each fighter Blueprint).
+	//  2. Live-retargeted fighters (WitchTools) return their "Body" there: the Manny the animations play on and the
+	//     ragdoll simulates, which is NOT drawn (tag WitchBattleSource, Render In Main Pass off). The character the
+	//     player sees is a second mesh retargeted from it ("Visual", same bone names, different proportions), and
+	//     the object belongs in THAT hand: take the owner's untagged mesh that has the socket.
+	//  3. Owners without a body mesh (objects, fighters that don't implement it): the first visible mesh drawn in the
+	//     main pass that has the socket, then any visible one, then any.
+	static const FName RetargetSourceTag(TEXT("WitchBattleSource"));
+	TArray<USkeletalMeshComponent*> Meshes;
+	SocketOwner->GetComponents(USkeletalMeshComponent::StaticClass(), Meshes);
+	if (SocketOwner->IsPlayer)
+	{
+		if (USkeletalMeshComponent* Body = Cast<APlayerObject>(SocketOwner)->GetBodyMesh())
+		{
+			if (!Body->ComponentHasTag(RetargetSourceTag))
+			{
+				OutMesh = Body->DoesSocketExist(SocketName) ? Body : nullptr;
+			}
+			else
+			{
+				for (USkeletalMeshComponent* Mesh : Meshes)
+				{
+					if (Mesh != Body && !Mesh->ComponentHasTag(RetargetSourceTag) && Mesh->DoesSocketExist(SocketName))
+					{
+						OutMesh = Mesh;
+						break;
+					}
+				}
+			}
+		}
+	}
+	for (int32 Pass = 0; Pass < 3 && !OutMesh; ++Pass)
+	{
+		for (USkeletalMeshComponent* Mesh : Meshes)
+		{
+			const bool bWanted = Pass == 0 ? Mesh->IsVisible() && Mesh->bRenderInMainPass
+				: Pass == 1 ? Mesh->IsVisible() : true;
+			if (bWanted && Mesh->DoesSocketExist(SocketName))
+			{
+				OutMesh = Mesh;
+				break;
+			}
+		}
+	}
+	if (!OutMesh)
+	{
+		return false;
+	}
+
+	// Mirror when the OWNER (whose pose we follow) faces left and draws that side with mirrored animations. The
+	// owner's facing matters, not this object's own Direction: the pose is what got mirrored. Owners that turn
+	// around (bMirrorWhenFlip) or flip with a -1 scale need nothing special: their socket transform already is the
+	// left-side one.
+	const APlayerObject* OwnerPlayer = SocketOwner->IsPlayer ? Cast<APlayerObject>(SocketOwner) : nullptr;
+	bOutMirrored = OwnerPlayer && OwnerPlayer->bMirrorAnimationsWhenFlip && !OwnerPlayer->bMirrorWhenFlip
+		&& SocketOwner->Direction == DIR_Left;
+
+	// The object's offset from the socket, authored for the right side.
+	const FTransform OffsetFromSocket(FQuat::MakeFromEuler(SocketRotationOffset), SocketOffset);
+	return FSocketMirror::GetComponentSpaceTransform(OutMesh, SocketName, OffsetFromSocket, bOutMirrored,
+		OwnerPlayer ? OwnerPlayer->AnimationMirrorTable.Get() : nullptr, EAxis::X, SocketMirrorSymmetryAxis,
+		OutComponentSpace);
 }
 
 void ABattleObject::CameraShake(FGameplayTag PatternName, int32 Scale)

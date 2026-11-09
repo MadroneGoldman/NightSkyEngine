@@ -382,6 +382,11 @@ public:
 	//bool bMirrorWhenFlip;
 	UPROPERTY(EditAnywhere, Category=Defaults)// delete this leave above
 	bool bMirrorAnimationsWhenFlip;
+	/** Madrone change. The mirror table this fighter's anim graph mirrors with (e.g. MDT_SK_Manny). Socket-following
+	 * objects use it to find mirror partner bones and the mirror axis (FSocketMirror). Optional: without it the
+	 * table's own _l/_r naming rules and axis X are used, which match MDT_SK_Manny. */
+	UPROPERTY(EditAnywhere, Category=Defaults)
+	TObjectPtr<class UMirrorDataTable> AnimationMirrorTable;
 
 	/*
 	 * States and subroutines

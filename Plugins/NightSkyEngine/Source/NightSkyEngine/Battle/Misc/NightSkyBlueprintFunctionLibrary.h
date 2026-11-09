@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
+#include "NightSkyEngine/Battle/Objects/SocketMirror.h"
 #include "NightSkyBlueprintFunctionLibrary.generated.h"
 
 /**
@@ -31,4 +32,12 @@ public:
 	static int32 Cos_x1000(int32 Deg_x10);
 	UFUNCTION(BlueprintPure)
 	static int32 Sin_x1000(int32 Deg_x10);
+
+	/** Madrone change. FSocketMirror for tests and tools: where an object offset by ObjectOffset from SocketName sits on
+	 * Mesh, in Mesh's component space, mirrored (the object's left-side placement) when bMirrored. MirrorTable may be
+	 * null (naming rules, axis X). Battle objects use this through ABattleObject::GetSocketFollowTransform. */
+	UFUNCTION(BlueprintCallable, Category="NightSky|Socket Mirror")
+	static bool GetMirroredSocketTransform(USkeletalMeshComponent* Mesh, FName SocketName, FTransform ObjectOffset,
+	                                       bool bMirrored, class UMirrorDataTable* MirrorTable,
+	                                       ESocketMirrorSymmetryAxis SymmetryAxis, FTransform& OutComponentSpace);
 };

@@ -3147,6 +3147,7 @@ void APlayerObject::RoundInit(bool ResetHealth)
 	SocketName = FName();
 	SocketObj = OBJ_Self;
 	SocketOffset = FVector::ZeroVector;
+	SocketRotationOffset = FVector::ZeroVector;
 	ObjectScale = FVector::OneVector;
 	AddColor = FLinearColor(0, 0, 0, 1);
 	MulColor = FLinearColor(0, 0, 0, 1);

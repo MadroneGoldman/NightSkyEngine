@@ -9,6 +9,7 @@
 #include "GameFramework/Pawn.h"
 #include "NightSkyEngine/Battle/Misc/CollisionBox.h"
 #include "NightSkyEngine/Data/CollisionData.h"
+#include "SocketMirror.h" // Madrone change: exact socket mirroring
 #include "BattleObject.generated.h"
 
 class ALinkActor;
@@ -928,7 +929,12 @@ public:
 	//UPROPERTY(EditAnywhere, Category=Defaults)
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category=Defaults)
 	bool bMirrorWhenFlip; //Madrone change was in player before
-	FName SocketNameLeft = {}; //error if its with other socket data
+	/** Madrone change. Socket-following objects on a fighter facing left (mirrored animations) are placed as the exact
+	 * mirror image of their right-side placement (FSocketMirror). A rotation can only mirror a shape that is
+	 * symmetric across one of its own planes: this is the object's local axis perpendicular to that plane. Y suits
+	 * objects modelled along X (a cigarette, a stick). Rollback-synced like the rest of the socket data. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category=Defaults)
+	ESocketMirrorSymmetryAxis SocketMirrorSymmetryAxis = ESocketMirrorSymmetryAxis::Y;
 	/*
 	 * Visual object transform
 	 */
@@ -1246,6 +1252,16 @@ public:
 	//detaches object from skeletal socket
 	UFUNCTION(BlueprintCallable)
 	void DetachFromSocket();
+	/** Madrone change. The socket this object follows (None when it doesn't). For tests and debugging. */
+	UFUNCTION(BlueprintPure)
+	FName GetFollowedSocketName() const { return SocketName; }
+	/** Madrone change. The object's offset from the socket it follows (SocketOffset / SocketRotationOffset). */
+	UFUNCTION(BlueprintPure)
+	FTransform GetSocketOffsetTransform() const { return FTransform(FQuat::MakeFromEuler(SocketRotationOffset), SocketOffset); }
+	/** Madrone change. Where this object is placed while following a socket, in the followed mesh's component space,
+	 * plus that mesh. False when not following a socket. Used by the mirror tests (battle_test.socket_log). */
+	UFUNCTION(BlueprintCallable)
+	bool GetSocketFollowTransform(FTransform& OutComponentSpace, USkeletalMeshComponent*& OutMesh, bool& bOutMirrored);
 	UFUNCTION(BlueprintCallable)
 	void CameraShake(FGameplayTag PatternName, int32 Scale);
 	//generate random number

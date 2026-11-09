@@ -170,3 +170,11 @@ int32 UNightSkyBlueprintFunctionLibrary::Sin_x1000(int32 Deg_x10)
 		return -gSinTable[3599 - Tmp2];
 	return -gSinTable[Tmp2 - 1800];
 }
+
+bool UNightSkyBlueprintFunctionLibrary::GetMirroredSocketTransform(USkeletalMeshComponent* Mesh, FName SocketName,
+	FTransform ObjectOffset, bool bMirrored, UMirrorDataTable* MirrorTable, ESocketMirrorSymmetryAxis SymmetryAxis,
+	FTransform& OutComponentSpace)
+{
+	return FSocketMirror::GetComponentSpaceTransform(Mesh, SocketName, ObjectOffset, bMirrored, MirrorTable, EAxis::X,
+		SymmetryAxis, OutComponentSpace);
+}
