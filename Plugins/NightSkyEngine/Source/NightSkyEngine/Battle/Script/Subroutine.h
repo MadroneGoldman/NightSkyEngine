@@ -16,7 +16,7 @@ class ABattleObject;
  * Allows encapsulating commonly used code that can be reused in states.
  */
 UCLASS(BlueprintType, Blueprintable)
-class USubroutine : public USerializableObj
+class NIGHTSKYENGINE_API USubroutine : public USerializableObj // Madrone change: exported, so other modules can add subroutines (battle items)
 {
 	GENERATED_BODY()
 public:
