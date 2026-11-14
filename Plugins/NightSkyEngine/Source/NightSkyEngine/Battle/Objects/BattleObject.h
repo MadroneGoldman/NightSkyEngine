@@ -20,6 +20,7 @@ class UNiagaraComponent;
 class ANightSkyGameState;
 class UState;
 class APlayerObject;
+class USubroutine;
 
 constexpr int32 MaxDrawPriority = 4;
 
@@ -1075,9 +1076,21 @@ public:
 	bool IsStopped() const;
 	UFUNCTION(BlueprintPure)
 	bool IsTimerPaused() const;
+	/** Madrone change: the subroutine CallSubroutine would run for Name: the player's common subroutine with that name,
+	 * else its character subroutine, else null. Only the first match: see GetSubroutines. */
+	UFUNCTION(BlueprintPure)
+	USubroutine* GetSubroutine(FGameplayTag Name) const;
+	/** Madrone change: every subroutine registered under Name, common ones first, each list in the order they were
+	 * added. Several can share a name (AddSubroutine allows it), so effects can stack, e.g. one per battle item. */
+	UFUNCTION(BlueprintPure)
+	TArray<USubroutine*> GetSubroutines(FGameplayTag Name) const;
 	//calls subroutine
 	UFUNCTION(BlueprintCallable)
 	void CallSubroutine(FGameplayTag Name);
+	/** Madrone change: runs every subroutine GetSubroutines returns, in that order, with this object as Parent. The
+	 * return values are cleared once before the first, so the subroutines can add to them. */
+	UFUNCTION(BlueprintCallable)
+	void CallSubroutines(FGameplayTag Name);
 	//calls subroutine
 	UFUNCTION(BlueprintCallable)
 	void CallSubroutineWithArgs(FGameplayTag Name, int32 Arg1, int32 Arg2, int32 Arg3, int32 Arg4);

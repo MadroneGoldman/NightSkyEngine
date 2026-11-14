@@ -150,6 +150,15 @@ and `ThrowParam.Ground/Air`. Attack-level presets are subroutines: `SB_CmnAttack
 (`Subroutine.Cmn.AttackLevel.N`). A subroutine class must not inherit from another subroutine
 that already has a `Name` set (InitPlayer logs an error).
 
+`CallSubroutine` runs only the **first** subroutine with the tag (common list first, then the character
+list), so two subroutines with the same name don't stack. Madrone change: `GetSubroutine(tag)` returns
+that first match, `GetSubroutines(tag)` returns every match (common first, each list in the order it was
+added), and `CallSubroutines(tag)` runs them all with the caller as `Parent` (return values cleared once,
+before the first). `AddSubroutine` allows several subroutines with one name, so effects can stack: register
+one per battle item. The engine calls `Witch.Subroutine.OnComboEnd` with `CallSubroutines`, right after
+`Subroutine.Cmn.OnComboEnd` and `Subroutine.OnComboEnd`, on the attacker (`Parent`; the one who was hit
+is `Parent->Enemy`). More `Witch.Subroutine.*` hooks go in `SubroutineData.h/.cpp` the same way.
+
 ## Registers (scratch variables)
 
 | Registers | Scope | Reset |

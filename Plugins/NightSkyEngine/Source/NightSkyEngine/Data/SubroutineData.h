@@ -28,6 +28,10 @@ UE_DECLARE_GAMEPLAY_TAG_EXTERN(Subroutine_OnLanding);
 UE_DECLARE_GAMEPLAY_TAG_EXTERN(Subroutine_ThrowParam_Ground);
 UE_DECLARE_GAMEPLAY_TAG_EXTERN(Subroutine_ThrowParam_Air);
 
+// Madrone change: Witch hooks. The engine runs every subroutine registered under these (CallSubroutines), so effects
+// stack: register one per battle item with AddSubroutine. They run after the NSE Cmn and character versions.
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(Witch_Subroutine_OnComboEnd);
+
 
 /**
  * 

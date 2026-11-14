@@ -3288,6 +3288,7 @@ void APlayerObject::HandleEndCombo()
 		Enemy->ComboTimer = 0;
 		Enemy->CallSubroutine(Subroutine_Cmn_OnComboEnd);
 		Enemy->CallSubroutine(Subroutine_OnComboEnd);
+		Enemy->CallSubroutines(Witch_Subroutine_OnComboEnd); // Madrone change: stacking item hooks
 		ReceivedHitCommon = FHitDataCommon();
 		ReceivedHit = FHitData();
 		TotalProration = 10000;

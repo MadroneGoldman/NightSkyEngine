@@ -1602,14 +1602,7 @@ void ABattleObject::TriggerEvent(EEventType EventType, FGameplayTag StateMachine
 	if (EventType == EVT_Update) UpdateTime++;
 	if (const auto SubroutineName = EventHandlers[EventType].SubroutineName; SubroutineName != FGameplayTag::EmptyTag)
 	{
-		USubroutine* Subroutine = nullptr;
-
-		if (const auto CommonIndex = Player->CommonSubroutineNames.Find(SubroutineName); CommonIndex != INDEX_NONE)
-			Subroutine = Player->CommonSubroutines[CommonIndex];
-
-		else if (const auto Index = Player->SubroutineNames.Find(SubroutineName); Index != INDEX_NONE)
-			Subroutine = Player->Subroutines[Index];
-
+		USubroutine* Subroutine = GetSubroutine(SubroutineName); // Madrone change: lookup moved to GetSubroutine
 		if (!Subroutine) return;
 
 		UFunction* const Func = Subroutine->FindFunction(EventHandlers[EventType].FunctionName);
@@ -2508,17 +2501,50 @@ void ABattleObject::CallSubroutine(FGameplayTag Name)
 	SubroutineReturnVal3 = 0;
 	SubroutineReturnVal4 = 0;
 
-	if (Player->CommonSubroutineNames.Find(Name) != INDEX_NONE)
+	if (USubroutine* Subroutine = GetSubroutine(Name)) // Madrone change: lookup moved to GetSubroutine
 	{
-		Player->CommonSubroutines[Player->CommonSubroutineNames.Find(Name)]->Parent = this;
-		Player->CommonSubroutines[Player->CommonSubroutineNames.Find(Name)]->Exec();
-		return;
+		Subroutine->Parent = this;
+		Subroutine->Exec();
 	}
+}
 
-	if (Player->SubroutineNames.Find(Name) != INDEX_NONE)
+USubroutine* ABattleObject::GetSubroutine(FGameplayTag Name) const // Madrone change
+{
+	if (!Player) return nullptr;
+	if (const int32 Index = Player->CommonSubroutineNames.Find(Name); Index != INDEX_NONE)
+		return Player->CommonSubroutines[Index];
+	if (const int32 Index = Player->SubroutineNames.Find(Name); Index != INDEX_NONE)
+		return Player->Subroutines[Index];
+	return nullptr;
+}
+
+TArray<USubroutine*> ABattleObject::GetSubroutines(FGameplayTag Name) const // Madrone change
+{
+	TArray<USubroutine*> Found;
+	if (!Player) return Found;
+	for (int32 i = 0; i < Player->CommonSubroutineNames.Num(); i++)
 	{
-		Player->Subroutines[Player->SubroutineNames.Find(Name)]->Parent = this;
-		Player->Subroutines[Player->SubroutineNames.Find(Name)]->Exec();
+		if (Player->CommonSubroutineNames[i] == Name) Found.Add(Player->CommonSubroutines[i]);
+	}
+	for (int32 i = 0; i < Player->SubroutineNames.Num(); i++)
+	{
+		if (Player->SubroutineNames[i] == Name) Found.Add(Player->Subroutines[i]);
+	}
+	return Found;
+}
+
+void ABattleObject::CallSubroutines(FGameplayTag Name) // Madrone change
+{
+	SubroutineReturnVal1 = 0;
+	SubroutineReturnVal2 = 0;
+	SubroutineReturnVal3 = 0;
+	SubroutineReturnVal4 = 0;
+
+	for (USubroutine* Subroutine : GetSubroutines(Name))
+	{
+		if (!Subroutine) continue;
+		Subroutine->Parent = this;
+		Subroutine->Exec();
 	}
 }
 
