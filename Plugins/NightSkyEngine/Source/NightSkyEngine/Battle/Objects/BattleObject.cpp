@@ -700,6 +700,14 @@ void ABattleObject::HandleHitCollision(ABattleObject* AttackedObj)
 			AttackedPlayer->CallSubroutine(Subroutine_Cmn_HitCollision);
 			if (AttackedPlayer->SubroutineReturnVal1) return;
 
+			// Madrone change: a hit or block on a fighter pinned against a wall object (a wall battle prop) wears it down. Up to
+			// 25 cm off it counts: between a combo's hits the fighter is often just off the wall.
+			if (ABattleObject* Wall = GameState->GetObjectWallAgainst(AttackedPlayer, static_cast<int32>(25 * COORD_SCALE)))
+			{
+				InitHitDataByAttackLevel(false);
+				if (NormalHit.Damage != INT_MAX && NormalHit.Damage > 0) Wall->WallPressure += NormalHit.Damage;
+			}
+
 			if (AttackedPlayer->IsCorrectBlock(HitCommon.BlockType)) //check blocking
 			{
 				CallSubroutine(Subroutine_Cmn_OnBlock);
@@ -2388,6 +2396,8 @@ void ABattleObject::ResetObject()
 	ActionReg8 = 0;
 	ObjectReg1 = 0;
 	bPushImmovable = false; //Madrone change
+	bActsAsWall = false; //Madrone change
+	WallPressure = 0; //Madrone change
 	ObjectReg2 = 0;
 	ObjectReg3 = 0;
 	ObjectReg4 = 0;

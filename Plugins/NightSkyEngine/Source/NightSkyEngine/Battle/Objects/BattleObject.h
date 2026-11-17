@@ -971,6 +971,15 @@ public:
 	bool bIsNeutral = false;
 	// Madrone change: push collision moves whoever touches this object, never the object itself (a heavy battle prop).
 	bool bPushImmovable = false;
+	/* Madrone change: a wall in the middle of the stage (a wall battle prop), while it has push collision. Its push box is
+	 * the wall: fighters can't pass through it (they're put back out, like at a stage edge), and clear it only when their
+	 * push box's bottom is higher above their own floor than the wall is tall (on a slope too). A fighter flush against it
+	 * with the wall behind them (away from their opponent) is touching a wall, as at the stage edge: pushback goes to the
+	 * attacker, wall bounces happen. */
+	bool bActsAsWall = false;
+	/* Madrone change: damage of hits and blocked hits on fighters pinned against this wall object since its owner last took
+	 * it (the wall prop turns it into damage to itself, so nobody stays trapped against it). */
+	int32 WallPressure = 0;
 
 	// Anything past here isn't saved or loaded for rollback, unless it has the SaveGame tag.
 	uint32 ObjSyncEnd = 0;

@@ -218,6 +218,7 @@ void ANightSkyGameState::Init()
 		Objects[i]->AddTickPrerequisiteActor(this);
 		SortedObjects.Add(Objects.Last());
 	}
+	ObjectSpawnOrder = SortedObjects; // Madrone change
 
 	MatchInit();
 	HUDInit();
@@ -996,6 +997,24 @@ void ANightSkyGameState::UpdateGameState()
 
 void ANightSkyGameState::SortObjects()
 {
+	// Madrone change: active objects first, each group in spawn order. The swap sort below kept whatever order the objects
+	// were in, so after a rollback load (which ran it from a later frame's order) hits could be handled in a different
+	// order than when the frame first ran: a wall prop broken by one hit before or after the hit that pinned a fighter to it.
+	if (ObjectSpawnOrder.Num() == SortedObjects.Num())
+	{
+		int32 Write = Players.Num();
+		for (int i = Players.Num(); i < ObjectSpawnOrder.Num(); i++)
+		{
+			if (ObjectSpawnOrder[i]->IsActive) SortedObjects[Write++] = ObjectSpawnOrder[i];
+		}
+		BattleState.ActiveObjectCount = Write;
+		for (int i = Players.Num(); i < ObjectSpawnOrder.Num(); i++)
+		{
+			if (!ObjectSpawnOrder[i]->IsActive) SortedObjects[Write++] = ObjectSpawnOrder[i];
+		}
+		return;
+	}
+
 	BattleState.ActiveObjectCount = Players.Num();
 	for (int i = Players.Num(); i < SortedObjects.Num(); i++)
 	{
@@ -1033,6 +1052,8 @@ void ANightSkyGameState::HandlePushCollision() const
 	{
 		ABattleObject* Object = SortedObjects[i];
 		if (Object->IsPlayer || !Object->bIsNeutral || !(Object->MiscFlags & MISC_PushCollisionActive)) continue;
+		// Walls hold fighters in SetScreenBounds, by their own rules (height above the fighter's floor, any state).
+		if (Object->bActsAsWall) continue;
 		for (APlayerObject* Fighter : Players)
 		{
 			if (Fighter->PlayerFlags & PLF_IsOnScreen) Fighter->HandlePushCollision(Object);
@@ -1395,6 +1416,57 @@ void ANightSkyGameState::ResetTraining()
 	}
 }
 
+// Madrone change: walls in the middle of the stage (wall battle props).
+namespace
+{
+	bool IsLiveObjectWall(const ABattleObject* Wall)
+	{
+		return Wall && !Wall->IsPlayer && Wall->IsActive && Wall->bActsAsWall && (Wall->MiscFlags & MISC_PushCollisionActive);
+	}
+
+	// Below the wall's top. Heights are above each one's own floor, so on a slope the wall is as tall from either side.
+	bool IsBelowWallTop(const APlayerObject* Player, const ABattleObject* Wall)
+	{
+		return Player->B - Player->GroundHeight < Wall->T - Wall->PosY;
+	}
+}
+
+ABattleObject* ANightSkyGameState::GetObjectWallAgainst(const APlayerObject* Player, const int32 Reach) const
+{
+	if (!Player) return nullptr;
+	for (int i = 0; i < BattleState.ActiveObjectCount && i < SortedObjects.Num(); i++)
+	{
+		ABattleObject* Wall = SortedObjects[i];
+		if (!IsLiveObjectWall(Wall)) continue;
+		// Flush counts.
+		if (Player->R < Wall->L - Reach || Player->L > Wall->R + Reach || !IsBelowWallTop(Player, Wall)) continue;
+		// Like a stage edge, a wall is behind the fighter: one between them and their opponent isn't one they're pinned to.
+		const bool bWallOnRight = Wall->PosX > Player->PosX;
+		const APlayerObject* Enemy = Player->Enemy;
+		if (Enemy && Enemy->PosX != Player->PosX && (Enemy->PosX > Player->PosX) == bWallOnRight) continue;
+		return Wall;
+	}
+	return nullptr;
+}
+
+void ANightSkyGameState::PushOutOfObjectWalls(APlayerObject* Player) const
+{
+	if (!Player) return;
+	for (int i = 0; i < BattleState.ActiveObjectCount && i < SortedObjects.Num(); i++)
+	{
+		const ABattleObject* Wall = SortedObjects[i];
+		if (!IsLiveObjectWall(Wall)) continue;
+		Player->CalculatePushbox();
+		if (Player->R <= Wall->L || Player->L >= Wall->R || !IsBelowWallTop(Player, Wall)) continue;
+		// Out the way they came in: fighters are put back every frame, so they never get past the middle.
+		if (Player->PosX < Wall->PosX || (Player->PosX == Wall->PosX && Player->PlayerIndex == 0))
+			Player->PosX -= Player->R - Wall->L;
+		else
+			Player->PosX += Wall->R - Player->L;
+		Player->CalculatePushbox();
+	}
+}
+
 void ANightSkyGameState::SetScreenBounds() const
 {
 	for (int i = 0; i < BattleState.ActiveObjectCount; i++)
@@ -1412,6 +1484,9 @@ void ANightSkyGameState::SetScreenBounds() const
 					Player->WallTouchTimer++;
 				}
 
+				// Madrone change: walls in the middle of the stage hold fighters like the edges do (the edges win).
+				if (const auto Player = Cast<APlayerObject>(SortedObjects[i])) PushOutOfObjectWalls(Player);
+
 				SortedObjects[i]->CalculatePushbox();
 
 				if (SortedObjects[i]->PosX + 85000 >= ScreenData->ScreenBoundsRight * 1000)
@@ -1424,7 +1499,9 @@ void ANightSkyGameState::SetScreenBounds() const
 				}
 				else
 				{
-					if (const auto Player = Cast<APlayerObject>(SortedObjects[i]))
+					// Madrone change: walls in the middle of the stage (wall battle props) count too.
+					const auto Player = Cast<APlayerObject>(SortedObjects[i]);
+					if (Player && !GetObjectWallAgainst(Player))
 					{
 						Player->PlayerFlags &= ~PLF_TouchingWall;
 						Player->WallTouchTimer = 0;
@@ -2385,6 +2462,15 @@ void ANightSkyGameState::SaveGameState(TArray<uint8>& RollbackBuffer, int32* InC
 				Objects[i]->ObjectState->SaveForRollback(StateBuffer);
 				RollbackBuffer.Append(StateBuffer);
 			}
+
+			// Madrone change: the object's SaveGame properties, as SaveForRollbackBP saves a player's. They weren't saved for
+			// objects, so ObjectsToIgnoreHitsFrom, Boxes, LinkedActor, AnimStructs... kept a later frame's values after a
+			// rollback load: an object hit just before the rollback ignored the same hit when the frame was re-run.
+			{
+				TArray<uint8> PropertyBuffer;
+				UNightSkyBlueprintFunctionLibrary::SerializeBin(Objects[i], PropertyBuffer);
+				RollbackBuffer.Append(PropertyBuffer);
+			}
 		}
 		else
 		{
@@ -2464,6 +2550,7 @@ void ANightSkyGameState::LoadGameState(const TArray<uint8>& RollbackBuffer)
 			Objects[i]->LoadForRollback(GetRollbackBufferView(DataIdx).GetData());
 			DataIdx += SizeOfBattleObject;
 			DataIdx += Objects[i]->ObjectState->LoadForRollback(GetRollbackBufferView(DataIdx));
+			DataIdx += UNightSkyBlueprintFunctionLibrary::DeserializeBin(Objects[i], GetRollbackBufferView(DataIdx)); // Madrone change
 		}
 		else
 		{

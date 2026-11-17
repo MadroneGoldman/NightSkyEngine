@@ -296,6 +296,11 @@ public:
 	
 	UPROPERTY()
 	TArray<ABattleObject*> SortedObjects {};
+	/* Madrone change: SortedObjects as first built (players, assists, then the object pool), never reordered. SortObjects
+	 * lays the active ones out in this order, so the order objects are processed in (which hit lands first) never depends
+	 * on earlier frames: a frame re-run after a rollback load sees the same order as when it first ran. */
+	UPROPERTY()
+	TArray<ABattleObject*> ObjectSpawnOrder {};
 	
 	UPROPERTY(BlueprintReadWrite)
 	FTransform BattleSceneTransform;
@@ -434,6 +439,11 @@ public:
 	void SetScreenCorners();
 	void UpdateScreen();
 	void SetScreenBounds() const; //forces wall collision
+	// Madrone change: the wall object (ABattleObject::bActsAsWall) a fighter is pinned against, with it behind them, or null.
+	// Reach: how far off it still counts (NSE units); 0 is flush, as for touching a wall.
+	ABattleObject* GetObjectWallAgainst(const class APlayerObject* Player, int32 Reach = 0) const;
+	// Madrone change: puts a fighter back out of any wall object they've moved into, to the side they're on.
+	void PushOutOfObjectWalls(class APlayerObject* Player) const;
 	void StartSuperFreeze(int32 Duration, int32 SelfDuration, ABattleObject* CallingObject);
 	void ScreenPosToWorldPos(int32 X, int32 Y, int32& OutX, int32& OutY) const;
 	void WorldPosToScreenPos(int32 X, int32 Y, int32& OutX, int32& OutY) const;
