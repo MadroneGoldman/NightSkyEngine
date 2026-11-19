@@ -716,6 +716,10 @@ void ABattleObject::HandleHitCollision(ABattleObject* AttackedObj)
 				CreateCommonParticle(Particle_Guard, POS_Enemy,
 				                     FVector(0, 100, 0),
 				                     FRotator(HitCommon.HitAngle, 0, 0));
+				// Madrone change: the guard sound plays once per blocked hit, here. It used to play from the block
+				// states' Init (ST_CommonBlock), which also ran for proximity guard and again when the hit re-entered the
+				// state, so a blocked hit could sound twice.
+				PlayCommonSound(HitCommon.GuardSFX.IsValid() ? HitCommon.GuardSFX : Sound_Guard);
 				TriggerEvent(EVT_Block, StateMachine_Primary);
 				if (AttackedPlayer->IsMainPlayer())
 				{
