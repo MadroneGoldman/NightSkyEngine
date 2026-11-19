@@ -15,7 +15,7 @@ constexpr int32 InputBufferSize = 0x20;
  * Stores inputs every frame, and handles input checking.
  */
 USTRUCT()
-struct FInputBuffer
+struct NIGHTSKYENGINE_API FInputBuffer // Madrone change: exported (training reversals write the dummy's buffer)
 {
 	GENERATED_BODY()
 
