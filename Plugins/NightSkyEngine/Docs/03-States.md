@@ -168,11 +168,12 @@ There are two more Witch hooks:
 
 WitchToolsBattle's datamosh subroutines use both (WitchTools `Docs/Datamosh.md`).
 
-Two more Madrone changes in `ANightSkyGameState`:
+Also a Madrone change in `ANightSkyGameState`: a battle with no fighter on a side (Play In Editor straight into a
+stage, without Night Sky Engine Editor Settings > Battle Data) logs `Battle init: no fighters` and doesn't start. It
+used to crash in `MatchInit`.
 
-- **No fighters:** a battle with no fighter on a side (Play In Editor straight into a stage, without Night Sky Engine
-  Editor Settings > Battle Data) logs `Battle init: no fighters` and doesn't start. It used to crash in `MatchInit`.
-- **Split screen:** turned off for the fight and restored when it ends.
+Projects using NSE should keep split screen off (`bUseSplitscreen=False`): a VS battle makes a second local player for
+P2, which otherwise gets its own view.
 
 ## Registers (scratch variables)
 
