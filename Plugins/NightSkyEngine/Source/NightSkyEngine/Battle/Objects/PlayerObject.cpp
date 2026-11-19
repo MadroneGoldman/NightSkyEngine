@@ -1951,11 +1951,16 @@ void APlayerObject::HandleBlockAction()
 		GotoLabel(State_Label_Block_Level3);
 		break;
 	}
+	// Madrone change: training auto guard blocks by the rules: crouching against lows, standing against overheads, and
+	// in its own stance against mids (no held inputs to read the pose from).
+	const bool bAutoGuard = GameState && GameState->ShouldAutoGuard(this);
+	const EBlockType AutoBlockType = ReceivedHitCommon.BlockType;
+	const bool bAutoCrouch = AutoBlockType == BLK_Low || (AutoBlockType == BLK_Mid && Stance == ACT_Crouching);
 	if (Stance == ACT_Jumping || GetCurrentStateName(StateMachine_Primary) == State_Universal_AirBlock)
 	{
 		BufferedStateName = State_Universal_AirBlock;
 	}
-	else if (CheckInput(Input1) || GetCurrentStateName(StateMachine_Primary) == State_Universal_CrouchBlock)
+	else if (bAutoGuard ? bAutoCrouch : (CheckInput(Input1) || GetCurrentStateName(StateMachine_Primary) == State_Universal_CrouchBlock))
 	{
 		PosY = GroundHeight;
 		BufferedStateName = State_Universal_CrouchBlock;
@@ -2001,12 +2006,16 @@ void APlayerObject::HandleProximityBlock()
 	Input1.Sequence.Add(BitmaskDownLeft);
 	Input1.Method = EInputMethod::Strict;
 	GotoLabel(State_Label_Block_PreGuard);
+	// Madrone change: training auto guard picks the guard by the attack (crouch for lows, stand for overheads).
+	const EBlockType AutoBlockType = Enemy->HitCommon.BlockType;
+	const bool bAutoGuard = GameState && GameState->ShouldAutoGuard(this);
+	const bool bAutoCrouch = AutoBlockType == BLK_Low || (AutoBlockType == BLK_Mid && Stance == ACT_Crouching);
 	if (PosY > GroundHeight)
 	{
 		JumpToStatePrimary(State_Universal_AirBlock, true);
 		Stance = ACT_Jumping;
 	}
-	else if (CheckInput(Input1))
+	else if (bAutoGuard ? bAutoCrouch : CheckInput(Input1))
 	{
 		JumpToStatePrimary(State_Universal_CrouchBlock, true);
 		Stance = ACT_Crouching;
