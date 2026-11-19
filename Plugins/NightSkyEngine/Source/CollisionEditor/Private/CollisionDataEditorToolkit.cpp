@@ -9,6 +9,9 @@
 #include "Widgets/Docking/SDockTab.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Text/STextBlock.h"
+#include "Widgets/Input/SCheckBox.h"
+#include "Components/LineBatchComponent.h"
+#include "Components/DirectionalLightComponent.h"
 
 
 #define LOCTEXT_NAMESPACE "NightSkyCollisionEditor"
@@ -165,6 +168,68 @@ void FCollisionDataEditorToolkit::OnCelSelected(int32 CelIndex)
 #endif
 }
 
+// Madrone change
+void FCollisionDataEditorToolkit::RedrawBoxes()
+{
+	if (PreviewScene.IsValid()) PreviewScene->UpdateCollisionView();
+}
+
+// Madrone change
+void FCollisionDataEditorToolkit::ClearBoxes()
+{
+	if (!PreviewScene.IsValid() || !PreviewScene->GetWorld()) return;
+	for (const UWorld::ELineBatcherType Type : {UWorld::ELineBatcherType::World, UWorld::ELineBatcherType::WorldPersistent})
+	{
+		if (ULineBatchComponent* Lines = PreviewScene->GetWorld()->GetLineBatcher(Type)) Lines->Flush();
+	}
+}
+
+// Madrone change
+void FCollisionDataEditorToolkit::SetPictureLook(const bool bOn)
+{
+	if (!PreviewScene.IsValid()) return;
+	bPictureLook = bOn;
+	PreviewScene->SetFloorVisibility(!bOn, true);
+	PreviewScene->SetEnvironmentVisibility(!bOn, true);
+	if (PreviewViewportWidget.IsValid())
+	{
+		if (const TSharedPtr<FEditorViewportClient> Client = PreviewViewportWidget->GetViewportClient())
+		{
+			Client->EngineShowFlags.SetBillboardSprites(!bOn);
+			Client->Invalidate();
+		}
+	}
+	UDirectionalLightComponent* Light = PreviewScene->DirectionalLight;
+	if (bOn)
+	{
+		if (Light && !bSavedLight)
+		{
+			SavedLightRotation = Light->GetComponentRotation();
+			SavedLightIntensity = Light->Intensity;
+			bSavedLight = true;
+		}
+		// The camera looks from +Y: light from that side, above and a little in front of the fighter.
+		PreviewScene->SetLightDirection(FRotator(-35.f, -65.f, 0.f));
+		PreviewScene->SetLightBrightness(6.f);
+		PreviewScene->SetSkyBrightness(1.f);
+	}
+	else if (bSavedLight)
+	{
+		PreviewScene->SetLightDirection(SavedLightRotation);
+		PreviewScene->SetLightBrightness(SavedLightIntensity);
+	}
+}
+
+// Madrone change
+bool FCollisionDataEditorToolkit::ShowCel(const FGameplayTag Cel)
+{
+	if (!CollisionData) return false;
+	const int32 Index = CollisionData->CollisionFrames.IndexOfByPredicate([&Cel](const auto& Frame) { return Frame.CelName == Cel; });
+	if (Index == INDEX_NONE) return false;
+	OnCelSelected(Index);
+	return true;
+}
+
 void FCollisionDataEditorToolkit::OnCollisionFramesChanged()
 {
 	if (CelAssetTree.IsValid())
@@ -211,6 +276,22 @@ TSharedRef<SDockTab> FCollisionDataEditorToolkit::SpawnTab_PlayerObjectSelector(
 				.Padding(4)
 				[
 					PlayerObjectBPPicker.ToSharedRef()
+				]
+			]
+			// Madrone change: the move wiki's picture look, by hand.
+			+ SVerticalBox::Slot()
+			.AutoHeight()
+			[
+				SNew(SBorder)
+				.Padding(4)
+				[
+					SNew(SCheckBox)
+					.ToolTipText(LOCTEXT("WikiLookTip", "How the move wiki takes its pictures: no floor or sky, the light aimed at the fighter"))
+					.IsChecked_Lambda([this] { return bPictureLook ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
+					.OnCheckStateChanged_Lambda([this](const ECheckBoxState State) { SetPictureLook(State == ECheckBoxState::Checked); })
+					[
+						SNew(STextBlock).Text(LOCTEXT("WikiLook", "Wiki Look"))
+					]
 				]
 			]
 			+ SVerticalBox::Slot()

@@ -36,7 +36,8 @@ public class CollisionEditor : ModuleRules
 				"PropertyEditor",
 				"AdvancedPreviewScene",
 				"GameplayTags",
-				"GameplayTagsEditor"
+				"GameplayTagsEditor",
+				"ImageCore", "RenderCore" // Madrone change: UCollisionViewerLibrary::SaveShot
             });
 		
 		DynamicallyLoadedModuleNames.AddRange(

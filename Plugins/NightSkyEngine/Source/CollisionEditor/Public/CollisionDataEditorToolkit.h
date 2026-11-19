@@ -73,6 +73,18 @@ public:
 	// Get current animation name
 	FText GetSelectedState() const;
 
+	// Madrone change: what the dropdown and the Cel Browser do, for tools (UCollisionViewerLibrary).
+	void ShowFighter(UClass* Class) { OnPlayerObjectBPSelected(Class); }
+	bool ShowCel(FGameplayTag Cel);
+	TSharedPtr<SCollisionAnimationViewport> GetViewportWidget() const { return PreviewViewportWidget; }
+	// The boxes are one-frame debug lines drawn on the scene's tick: draws them again, for a picture taken outside it.
+	void RedrawBoxes();
+	void ClearBoxes();
+	// For pictures (the move wiki), and a toggle in the Cel Browser: no floor or sky backdrop, no pivot sprite, and the light
+	// aimed at the fighter from the camera's side. Off puts the scene's own light back.
+	void SetPictureLook(bool bOn);
+	bool IsPictureLook() const { return bPictureLook; }
+
 private:
 	TSharedPtr<IDetailsView> DetailsView;
 	TSharedPtr<SClassPropertyEntryBox> PlayerObjectBPPicker;
@@ -84,6 +96,11 @@ private:
 	TSharedPtr<SCelAssetTree> CelAssetTree;
 	FGameplayTag SelectedCel;
 	UClass* PlayerObjectClass = nullptr;
+	// Madrone change: picture look state, and the scene's own light to put back.
+	bool bPictureLook = false;
+	bool bSavedLight = false;
+	FRotator SavedLightRotation;
+	float SavedLightIntensity = 0.f;
 	APlayerObject* PlayerObject{};
 
 	void InitializeCelAssetTree();

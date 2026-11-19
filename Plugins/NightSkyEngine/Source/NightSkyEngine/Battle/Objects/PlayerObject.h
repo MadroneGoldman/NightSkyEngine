@@ -300,6 +300,9 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category=Intro)
 	FGameplayTag IntroName;
 
+	// Madrone change: which cancels are open right now (ECancelFlags), for tools that read moves (the move wiki).
+	uint32 GetCancelFlags() const { return CancelFlags; }
+
 protected:
 	/*
 	 * Internal values.
