@@ -310,6 +310,21 @@ public:
 	TArray<FGameplayTag> BattleExtensionNames = {};
 
 	FOnNightSkyRoundInit OnRoundInit; //Madrone change
+	/** Madrone change: hooks for game state subclasses (WitchTools' training game state). Empty here, so other modes
+	 * pay nothing but the call. bShouldResimulate: a frame re-run after a rollback.
+	 * After the main players' Inputs are set (pads or CPU), before anything updates: may change
+	 * BattleState.MainPlayer[i]->Inputs (screen-relative: Left is left). */
+	virtual void OnFighterInputs(bool bShouldResimulate) {}
+	/** Madrone change: after every object updated this battle frame (before visuals, camera and HUD). */
+	virtual void OnBattleFrameEnd(bool bShouldResimulate) {}
+	/** Madrone change: whether a hit on Defender is a counter hit. Night Sky: the defender was attacking. */
+	virtual bool ShouldCounterHit(const APlayerObject* Defender) const;
+	/** Madrone change: true when the subclass drives the training dummy itself, so Night Sky's own training dummy
+	 * (player 2 held neutral, A while stunned) stays out of the way. */
+	virtual bool ControlsTrainingDummy() const { return false; }
+	/** Madrone change: training "auto guard" (as Ikemen GO's training flag): true makes Defender's block check count back as
+	 * held, standing or crouching to match the attack. The defender still needs a state that may block (ENB_Block). */
+	virtual bool ShouldAutoGuard(const APlayerObject* Defender) const { return false; }
 	/** Madrone change: true while frames are being re-run after a rollback. Skip anything that shouldn't happen twice. */
 	bool IsResimulating() const { return bIsResimulating; }
 

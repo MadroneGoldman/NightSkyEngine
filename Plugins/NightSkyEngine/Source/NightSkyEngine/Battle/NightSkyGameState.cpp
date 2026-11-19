@@ -699,6 +699,7 @@ void ANightSkyGameState::UpdateGameState(int32 Input1, int32 Input2, bool bShoul
 	if (!BattleState.MainPlayer[1]->bIsCpu) BattleState.MainPlayer[1]->Inputs = Input2;
 	else if (const auto CPU = Cast<ANightSkyAIController>(BattleState.MainPlayer[1]->Controller); CPU && !bShouldResimulate)
 		CPU->Update();
+	OnFighterInputs(bShouldResimulate); // Madrone change: training dummy, swap, record / playback (subclass)
 
 	for (int i = 0; i < SortedObjects.Num(); i++)
 	{
@@ -812,11 +813,18 @@ void ANightSkyGameState::UpdateGameState(int32 Input1, int32 Input2, bool bShoul
 			BattleState.GaugeP2[i] = 0;
 	}
 
+	OnBattleFrameEnd(bShouldResimulate); // Madrone change: training frame bar, input history (subclass)
+
 	ParticleManager->PauseParticles();
 	UpdateVisuals(bShouldResimulate);
 	UpdateCamera();
 	UpdateHUD();
 	ManageAudio();
+}
+
+bool ANightSkyGameState::ShouldCounterHit(const APlayerObject* Defender) const
+{
+	return Defender && (Defender->AttackFlags & ATK_IsAttacking) != 0;
 }
 
 void ANightSkyGameState::SetScreenCorners()

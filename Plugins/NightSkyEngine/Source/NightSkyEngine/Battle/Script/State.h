@@ -265,7 +265,7 @@ struct FInputCondition
 	 * Disallowed inputs. If any inputs in this array are detected, this input is invalidated.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (Bitmask, BitmaskEnum = "/Script/NightSkyEngine.EInputFlags"))
-	int DisallowedInputsMask;
+	int DisallowedInputsMask = 0; // Madrone change: was uninitialized, so input conditions built in code (block checks, throw tech) failed at random
 
 	/**
 	 * This value determines how many imprecise inputs are allowed in this condition.

@@ -832,7 +832,7 @@ void ABattleObject::HandleHitCollision(ABattleObject* AttackedObj)
 				if (AttackedPlayer->SuperArmorData.bArmorDisableIncomingHit)
 					EnableHit(false);
 			}
-			else if ((AttackedPlayer->AttackFlags & ATK_IsAttacking) == 0)
+			else if (!GameState->ShouldCounterHit(AttackedPlayer)) // Madrone change: training can force counter hits
 			{
 				AttackedPlayer->PlayerFlags &= ~PLF_ReceivedCounterHit;
 

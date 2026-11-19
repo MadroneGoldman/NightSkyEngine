@@ -472,7 +472,7 @@ void APlayerObject::Update()
 				else GameState->BattleState.GaugeP2[i] = GameState->BattleState.MaxGauge[i];
 			}
 		}
-		if (PlayerIndex == 1)
+		if (PlayerIndex == 1 && !GameState->ControlsTrainingDummy()) // Madrone change: a training game state may drive it
 		{
 			if (CheckIsStunned())
 				Inputs = INP_A;
@@ -1848,6 +1848,21 @@ bool APlayerObject::IsCorrectBlock(EBlockType BlockType)
 	CallSubroutine(Subroutine_Cmn_IsCorrectBlock);
 	if (SubroutineReturnVal2) return SubroutineReturnVal1;
 	
+	// Madrone change: training auto guard. Back counts as held; low attacks are blocked crouching, the rest standing.
+	// Allowed where blocking is (ENB_Block) and in the guard states themselves (proximity guard may enter one first).
+	const FGameplayTag CurrentState = GetCurrentStateName(StateMachine_Primary);
+	const bool bInGuardState = CurrentState == State_Universal_StandBlock || CurrentState == State_Universal_CrouchBlock
+		|| CurrentState == State_Universal_AirBlock;
+	if (BlockType != BLK_None && GameState && GameState->ShouldAutoGuard(this)
+		&& (bInGuardState || GetEnableFlags(StateMachine_Primary) & ENB_Block))
+	{
+		if (PosY > GroundHeight)
+			return PrimaryStateMachine.StateNames.Contains(State_Universal_AirBlock);
+		if (BlockType == BLK_Low || (BlockType == BLK_Mid && Stance == ACT_Crouching))
+			return PrimaryStateMachine.StateNames.Contains(State_Universal_CrouchBlock);
+		return PrimaryStateMachine.StateNames.Contains(State_Universal_StandBlock);
+	}
+
 	if (BlockType != BLK_None && GetEnableFlags(StateMachine_Primary) & ENB_Block)
 	{
 		FInputCondition Left;

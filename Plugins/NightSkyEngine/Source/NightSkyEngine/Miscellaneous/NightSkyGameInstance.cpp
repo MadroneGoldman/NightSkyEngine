@@ -50,7 +50,13 @@ void UNightSkyGameInstance::TravelToVSInfo() const
 
 void UNightSkyGameInstance::TravelToBattleMap() const
 {
-	this->GetWorld()->ServerTravel(BattleData.Stage->StageURL, true);
+	FString URL = BattleData.Stage->StageURL;
+	// Madrone change: training and replays use their own game mode (and so their own game state) when one is set.
+	if ((IsTraining || IsReplay) && !TrainingGameMode.IsNull())
+	{
+		URL += TEXT("?game=") + TrainingGameMode.ToSoftObjectPath().ToString();
+	}
+	this->GetWorld()->ServerTravel(URL, true);
 }
 
 void UNightSkyGameInstance::LoadReplay()

@@ -17,6 +17,7 @@ constexpr int32 MaxReplays = 999;
 
 class APlayerObject;
 class UReplaySaveInfo;
+class AGameModeBase;
 enum class EBattleFormat : uint8;
 
 USTRUCT(BlueprintType)
@@ -133,7 +134,11 @@ public:
 	bool IsCPUBattle = false;
 	UPROPERTY(BlueprintReadWrite)
 	bool IsReplay = false;
-	
+	/** Madrone change: the game mode for training and replays (its game state can show a frame bar, input history...).
+	 * Added to the stage URL as ?game=. Empty: the stage's own game mode, as for every other battle. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Training")
+	TSoftClassPtr<AGameModeBase> TrainingGameMode;
+
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	TEnumAsByte<EFighterRunners> FighterRunner;	
 
