@@ -22,12 +22,15 @@ namespace SocketMirrorPrivate
 	{
 		TArray<int32> MirrorBone;
 		TArray<FQuat> RefRotationCS;
+		// What the entry was built from: the mesh's reference skeleton can be rebuilt in place in the editor (skeleton
+		// edits, bone cleanup), which keeps the asset key but changes bone indices.
+		const FTransform* RefPoseData = nullptr;
 	};
 
 	using FCacheKey = TPair<TObjectKey<const USkinnedAsset>, TObjectKey<const UMirrorDataTable>>;
 
-	// Game-thread only (battle visuals run on the game thread). Entries are tiny; assets rarely change mid-session,
-	// and a reimported mesh gets a fresh asset key anyway.
+	// Game-thread only (battle visuals run on the game thread). Entries are tiny; a reimported mesh gets a fresh asset
+	// key, a mesh edited in place is rebuilt (RefPoseData / bone count no longer match).
 	TMap<FCacheKey, FMeshMirrorData>& Cache()
 	{
 		static TMap<FCacheKey, FMeshMirrorData> Map;
@@ -37,13 +40,17 @@ namespace SocketMirrorPrivate
 	const FMeshMirrorData& GetMirrorData(const USkinnedAsset* Asset, const UMirrorDataTable* Table)
 	{
 		const FCacheKey Key(Asset, Table);
+		const FReferenceSkeleton& RefSkeleton = Asset->GetRefSkeleton();
 		if (const FMeshMirrorData* Found = Cache().Find(Key))
 		{
-			return *Found;
+			if (Found->MirrorBone.Num() == RefSkeleton.GetNum() && Found->RefPoseData == RefSkeleton.GetRefBonePose().GetData())
+			{
+				return *Found;
+			}
 		}
 
 		FMeshMirrorData Data;
-		const FReferenceSkeleton& RefSkeleton = Asset->GetRefSkeleton();
+		Data.RefPoseData = RefSkeleton.GetRefBonePose().GetData();
 		const int32 NumBones = RefSkeleton.GetNum();
 		const TArray<FTransform>& RefPose = RefSkeleton.GetRefBonePose();
 
