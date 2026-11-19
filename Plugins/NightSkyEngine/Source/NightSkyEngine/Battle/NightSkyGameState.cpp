@@ -1622,10 +1622,20 @@ void ANightSkyGameState::UpdateCamera()
 				StopLevelSequence();
 				return;
 			}
-			const FMovieSceneSequencePlaybackParams Params = FMovieSceneSequencePlaybackParams(
-				FFrameTime(BattleState.CurrentSequenceTime),
-				EUpdatePositionMethod::Scrub);
-			SequenceActor->GetSequencePlayer()->SetPlaybackPosition(Params);
+			// Madrone change: scrub through each frame since the last update (a slow render frame covers several battle
+			// frames), so event keys on every frame fire, once. After a rollback (time went back) or a long gap: jump.
+			const int32 SequenceTime = BattleState.CurrentSequenceTime;
+			const int32 FirstTime = LastScrubbedSequenceTime >= 0 && LastScrubbedSequenceTime < SequenceTime
+				&& SequenceTime - LastScrubbedSequenceTime <= 30 ? LastScrubbedSequenceTime + 1 : SequenceTime;
+			if (LastScrubbedSequenceTime != SequenceTime)
+			{
+				for (int32 Time = FirstTime; Time <= SequenceTime; ++Time)
+				{
+					SequenceActor->GetSequencePlayer()->SetPlaybackPosition(
+						FMovieSceneSequencePlaybackParams(FFrameTime(Time), EUpdatePositionMethod::Scrub));
+				}
+				LastScrubbedSequenceTime = SequenceTime;
+			}
 			const FVector SequenceTargetVector = FVector(SequenceTarget->PosX / COORD_SCALE,
 			                                             SequenceTarget->PosZ / COORD_SCALE,
 			                                             SequenceTarget->PosY / COORD_SCALE);
@@ -1741,6 +1751,7 @@ void ANightSkyGameState::PlayLevelSequence(APlayerObject* Target, APlayerObject*
 		}
 		SequenceTarget = Target;
 		SequenceEnemy = Enemy;
+		LastScrubbedSequenceTime = -1;
 		BattleState.CurrentSequenceTime = 0;
 		BattleState.IsPlayingSequence = true;
 	}
@@ -1757,6 +1768,7 @@ void ANightSkyGameState::StopLevelSequence()
 	}
 	
 	SequenceActor->GetSequencePlayer()->Stop();
+	LastScrubbedSequenceTime = -1;
 	BattleState.CurrentSequenceTime = -1;
 	BattleState.IsPlayingSequence = false;
 }

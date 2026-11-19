@@ -344,6 +344,10 @@ public:
 	UPROPERTY(BlueprintReadOnly)
 	bool bIsPlayingSequence = false;
 
+	/** Madrone change: the sequence frame the camera update last scrubbed to (-1 = none). It scrubs through every frame
+	 * since, so event keys on frames a slow render frame would skip still fire. Presentation only, not rollback state. */
+	int32 LastScrubbedSequenceTime = -1;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float CameraYaw = -2.5f;
 
