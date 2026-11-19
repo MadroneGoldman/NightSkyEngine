@@ -199,7 +199,7 @@ void ANightSkyGameState::Init()
 			NewP2Assist->CharacterName = P2AssistData->CharaFriendlyName; 
 			NewP2Assist->SetActorHiddenInGame(true);
 		
-			P1Assist = NewP2Assist;
+			P2Assist = NewP2Assist;
 			NewP2Assist->SetActorTransform(BattleSceneTransform);
 			SortedObjects.Add(NewP2Assist);
 			NewP2Assist->InitPlayer();

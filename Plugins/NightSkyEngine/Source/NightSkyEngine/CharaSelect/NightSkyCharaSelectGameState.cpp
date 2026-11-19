@@ -40,6 +40,8 @@ void ANightSkyCharaSelectGameState::Tick(float DeltaTime)
 	{
 		Chara->UpdateNotBattle();
 	}
+	if (P1AssistChara) P1AssistChara->UpdateNotBattle();
+	if (P2AssistChara) P2AssistChara->UpdateNotBattle();
 }
 
 void ANightSkyCharaSelectGameState::AddPlayerObject(UPrimaryCharaData* Player, bool IsP1)
@@ -85,4 +87,26 @@ void ANightSkyCharaSelectGameState::AddColorIndex(int InColor, bool IsP1)
 			return;
 		GameInstance->BattleData.ColorIndicesP2[P2Charas.Num() - 1] = InColor;
 	}
+}
+
+void ANightSkyCharaSelectGameState::SetAssist(UPrimaryCharaData* Assist, bool IsP1)
+{
+	TObjectPtr<APlayerObject>& Shown = IsP1 ? P1AssistChara : P2AssistChara;
+	if (Shown)
+	{
+		Shown->Destroy();
+		Shown = nullptr;
+	}
+	if (GameInstance)
+	{
+		(IsP1 ? GameInstance->BattleData.P1Assist : GameInstance->BattleData.P2Assist) = Assist;
+	}
+	if (!Assist || !Assist->PlayerClass) return;
+	Shown = GetWorld()->SpawnActor<APlayerObject>(Assist->PlayerClass);
+	Shown->InitPlayer();
+	Shown->CharaSelectGameState = this;
+	Shown->SetDefaultComponentVisibility();
+	Shown->PlayerFlags = PLF_IsOnScreen;
+	Shown->SetActorLocation(IsP1 ? P1AssistPosition : P2AssistPosition);
+	if (!IsP1) Shown->Direction = DIR_Left;
 }

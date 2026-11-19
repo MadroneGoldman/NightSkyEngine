@@ -30,6 +30,15 @@ public:
 	TArray<APlayerObject*> P2Charas;
 	UPROPERTY(EditAnywhere)
 	TArray<FVector> P2Positions;
+	/** Where each side's assist stands on character select: behind the team. */
+	UPROPERTY(EditAnywhere)
+	FVector P1AssistPosition = FVector(-250, 110, 0);
+	UPROPERTY(EditAnywhere)
+	FVector P2AssistPosition = FVector(250, 110, 0);
+	UPROPERTY(BlueprintReadOnly)
+	TObjectPtr<APlayerObject> P1AssistChara;
+	UPROPERTY(BlueprintReadOnly)
+	TObjectPtr<APlayerObject> P2AssistChara;
 
 protected:
 	// Called when the game starts or when spawned
@@ -43,4 +52,7 @@ public:
 	void AddPlayerObject(UPrimaryCharaData* Player, bool IsP1 = true);
 	UFUNCTION(BlueprintCallable)
 	void AddColorIndex(int InColor, bool IsP1 = true);
+	/** Sets a side's assist (BattleData.P1Assist / P2Assist) and shows it standing behind the team. Null clears it. */
+	UFUNCTION(BlueprintCallable)
+	void SetAssist(UPrimaryCharaData* Assist, bool IsP1 = true);
 };
