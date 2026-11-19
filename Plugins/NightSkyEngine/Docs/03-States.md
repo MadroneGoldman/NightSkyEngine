@@ -159,6 +159,21 @@ one per battle item. The engine calls `Witch.Subroutine.OnComboEnd` with `CallSu
 `Subroutine.Cmn.OnComboEnd` and `Subroutine.OnComboEnd`, on the attacker (`Parent`; the one who was hit
 is `Parent->Enemy`). More `Witch.Subroutine.*` hooks go in `SubroutineData.h/.cpp` the same way.
 
+There are two more Witch hooks:
+
+- `Witch.Subroutine.OnCounterHit`: on the attacking object, right after `Subroutine.Cmn.OnCounterHit`. A hook can
+  set `bSkipCounterHitColor` on its Parent to keep the one hit from flashing red. The flag is cleared before the hooks
+  and read right after them.
+- `Witch.Subroutine.OnUpdate`: on the fighter, each frame it updates, after `Subroutine.OnUpdate`.
+
+WitchToolsBattle's datamosh subroutines use both (WitchTools `Docs/Datamosh.md`).
+
+Two more Madrone changes in `ANightSkyGameState`:
+
+- **No fighters:** a battle with no fighter on a side (Play In Editor straight into a stage, without Night Sky Engine
+  Editor Settings > Battle Data) logs `Battle init: no fighters` and doesn't start. It used to crash in `MatchInit`.
+- **Split screen:** turned off for the fight and restored when it ends.
+
 ## Registers (scratch variables)
 
 | Registers | Scope | Reset |

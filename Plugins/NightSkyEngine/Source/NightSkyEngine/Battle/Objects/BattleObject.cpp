@@ -17,6 +17,7 @@
 #include "NightSkyEngine/Battle/Script/Subroutine.h"
 #include "NightSkyEngine/Data/CameraShakeData.h"
 #include "NightSkyEngine/Data/ParticleData.h"
+#include "NightSkyEngine/Data/SubroutineData.h" // Madrone change: Witch hooks
 #include "NightSkyEngine/Battle/Misc/RandomManager.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(BattleObject)
@@ -879,6 +880,8 @@ void ABattleObject::HandleHitCollision(ABattleObject* AttackedObj)
 
 				CallSubroutine(Subroutine_Cmn_OnHit);
 				CallSubroutine(Subroutine_Cmn_OnCounterHit);
+				bSkipCounterHitColor = false; // Madrone change: a hook may turn the red flash off
+				CallSubroutines(Witch_Subroutine_OnCounterHit); // Madrone change: stacking counter-hit hooks
 
 				TriggerEvent(EVT_Hit, StateMachine_Primary);
 				TriggerEvent(EVT_CounterHit, StateMachine_Primary);
@@ -890,10 +893,13 @@ void ABattleObject::HandleHitCollision(ABattleObject* AttackedObj)
 					AttackedPlayer->TriggerEvent(EVT_ReceiveHitMainPlayer, StateMachine_Primary);
 				}
 
-				AttackedPlayer->AddColor = FLinearColor(1, 0, 0.0, 1);
-				AttackedPlayer->MulColor = FLinearColor(2.5, 0.1, 0.1, 1);
-				AttackedPlayer->AddFadeSpeed = 0.1;
-				AttackedPlayer->MulFadeSpeed = 0.1;
+				if (!bSkipCounterHitColor) // Madrone change
+				{
+					AttackedPlayer->AddColor = FLinearColor(1, 0, 0.0, 1);
+					AttackedPlayer->MulColor = FLinearColor(2.5, 0.1, 0.1, 1);
+					AttackedPlayer->AddFadeSpeed = 0.1;
+					AttackedPlayer->MulFadeSpeed = 0.1;
+				}
 
 				if (IsPlayer && Player->PlayerFlags & PLF_HitgrabActive)
 				{

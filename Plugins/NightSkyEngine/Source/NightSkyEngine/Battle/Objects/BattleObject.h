@@ -984,6 +984,12 @@ public:
 	// Anything past here isn't saved or loaded for rollback, unless it has the SaveGame tag.
 	uint32 ObjSyncEnd = 0;
 
+	// Madrone change: a Witch.Subroutine.OnCounterHit hook sets this to keep the one it hit from flashing the red
+	// counter-hit colour (it would hide an effect, e.g. a datamosh). Cleared before the hooks run and read right after,
+	// within the same hit, so it needs no rollback.
+	UPROPERTY(BlueprintReadWrite, Category="Witch")
+	bool bSkipCounterHitColor = false;
+
 	UPROPERTY(SaveGame)
 	TArray<ABattleObject*> ObjectsToIgnoreHitsFrom;
 

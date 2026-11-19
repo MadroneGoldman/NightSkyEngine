@@ -454,6 +454,7 @@ void APlayerObject::Update()
 	Super::Update();
 	CallSubroutine(Subroutine_Cmn_OnUpdate);
 	CallSubroutine(Subroutine_OnUpdate);
+	CallSubroutines(Witch_Subroutine_OnUpdate); // Madrone change: stacking per-frame hooks
 
 	if (GameState->GameInstance->IsTraining)
 	{

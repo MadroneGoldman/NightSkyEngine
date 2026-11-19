@@ -4,6 +4,7 @@
 #include "NightSkyGameState.h"
 #include "EngineUtils.h"
 #include "Engine/Engine.h"
+#include "Engine/GameViewportClient.h" // Madrone change: split screen off during fights
 #include "LevelSequenceActor.h"
 #include "LevelSequencePlayer.h"
 #include "NightSkyPlayerController.h"
@@ -72,6 +73,14 @@ void ANightSkyGameState::BeginPlay()
 {
 	Super::BeginPlay();
 
+	// Madrone change: a fight is one screen. In a project with split screen on (WitchGame), P2's local player got a
+	// second view of its own.
+	if (UGameViewportClient* Viewport = GetWorld()->GetGameViewport(); Viewport && !Viewport->IsSplitscreenForceDisabled())
+	{
+		Viewport->SetForceDisableSplitscreen(true);
+		bRestoreSplitscreen = true;
+	}
+
 	FActorSpawnParameters SpawnParameters;
 	ParticleManager = GetWorld()->SpawnActor<AParticleManager>();
 	AudioManager = GetWorld()->SpawnActor<AAudioManager>();
@@ -90,6 +99,14 @@ void ANightSkyGameState::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	Super::EndPlay(EndPlayReason);
 	GameInstance->EndRecordReplay();
+	if (bRestoreSplitscreen) // Madrone change
+	{
+		if (UGameViewportClient* Viewport = GetWorld() ? GetWorld()->GetGameViewport() : nullptr)
+		{
+			Viewport->SetForceDisableSplitscreen(false);
+		}
+		bRestoreSplitscreen = false;
+	}
 }
 
 void ANightSkyGameState::Init()
@@ -118,6 +135,16 @@ void ANightSkyGameState::Init()
 			List.RemoveAt(i);
 			if (Colors.IsValidIndex(i)) Colors.RemoveAt(i);
 		}
+	}
+
+	// Madrone change: a battle level started with no fighter on a side (Play In Editor straight into a stage, without
+	// character select) crashed the editor in MatchInit. Say what's missing and don't start the match.
+	if (GameInstance->BattleData.PlayerListP1.IsEmpty() || GameInstance->BattleData.PlayerListP2.IsEmpty())
+	{
+		UE_LOG(LogNightSkyEngine, Error, TEXT("Battle init: no fighters (P1 %d, P2 %d). Pick them on character select, or for Play In "
+			"Editor fill Project Settings > Night Sky Engine Editor Settings > Battle Data (with Is Valid on)."),
+			GameInstance->BattleData.PlayerListP1.Num(), GameInstance->BattleData.PlayerListP2.Num());
+		return;
 	}
 
 	for (int i = 0; i < GameInstance->BattleData.PlayerListP1.Num(); i++)
@@ -425,6 +452,7 @@ void ANightSkyGameState::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	if (!FighterRunner) return; // Madrone change: no match was started (see Init)
 	FighterRunner->Update(DeltaTime);
 }
 

@@ -343,6 +343,8 @@ public:
 
 	UPROPERTY(BlueprintReadOnly)
 	bool bIsPlayingSequence = false;
+	// Madrone change: split screen was forced off for the fight and goes back on when it ends.
+	bool bRestoreSplitscreen = false;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float CameraYaw = -2.5f;
