@@ -8,6 +8,10 @@
 #include "ReplayInfo.h"
 #include "Kismet/GameplayStatics.h"
 #include "NightSkyEngine/Data/PrimaryStageData.h"
+#include "NightSkyEngine/Network/NSESessionSubsystem.h"
+#include "OnlineSubsystemUtils.h"
+#include "Blueprint/UserWidget.h"
+#include "UObject/UObjectIterator.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(NightSkyGameInstance)
 
@@ -35,6 +39,8 @@ void UNightSkyGameInstance::Init()
 
 	GetWorld()->Exec(GetWorld(), *AntiAliasingCommand);
 	GetWorld()->Exec(GetWorld(), *GlobalIlluminationCommand);
+
+	LoginOnline();
 }
 
 void UNightSkyGameInstance::TravelToVSInfo() const
@@ -56,7 +62,7 @@ void UNightSkyGameInstance::PlayReplayToGameState(int32 FrameNumber, int32& OutP
 {
 	if (FrameNumber >= CurrentReplay->LengthInFrames)
 	{
-		UGameplayStatics::OpenLevel(this, FName(TEXT("MainMenu_PL")));
+		OpenMainMenu(this);
 		return;
 	}
 	OutP1Input = CurrentReplay->InputsP1[FrameNumber];
@@ -144,4 +150,75 @@ void UNightSkyGameInstance::DeleteReplay(const FString& ReplayName)
 		UGameplayStatics::DeleteGameInSlot(ReplayName, 0);
 	}
 	FindReplays();
+}
+
+void UNightSkyGameInstance::BP_OnFindReplaysComplete_Implementation(const TArray<UReplaySaveInfo*>& AllReplays)
+{
+	// The replay menu lists them: call OnFindReplays(Array) on every open widget that has it.
+	static const FName FuncName(TEXT("OnFindReplays"));
+	for (TObjectIterator<UUserWidget> It; It; ++It)
+	{
+		UUserWidget* Widget = *It;
+		if (!IsValid(Widget) || Widget->GetWorld() != GetWorld() || Widget->HasAnyFlags(RF_ClassDefaultObject))
+			continue;
+		UFunction* Func = Widget->FindFunction(FuncName);
+		if (!Func || Func->NumParms != 1)
+			continue;
+		const FArrayProperty* Param = CastField<FArrayProperty>(Func->PropertyLink);
+		if (!Param || !Param->Inner->IsA<FObjectPropertyBase>())
+			continue;
+		TArray<UReplaySaveInfo*> Copy = AllReplays;
+		Widget->ProcessEvent(Func, &Copy);
+	}
+}
+
+void UNightSkyGameInstance::InitPlayerList()
+{
+	BattleData.PlayerListP1.Empty();
+	BattleData.PlayerListP1.SetNum(TeamSizeP1);
+	BattleData.PlayerListP2.Empty();
+	BattleData.PlayerListP2.SetNum(TeamSizeP2);
+	BattleData.ColorIndicesP1.Empty();
+	BattleData.ColorIndicesP1.SetNum(TeamSizeP1);
+	BattleData.ColorIndicesP2.Empty();
+	BattleData.ColorIndicesP2.SetNum(TeamSizeP2);
+}
+
+void UNightSkyGameInstance::HostSession()
+{
+	if (!IsHost)
+		return;
+	if (UNSESessionSubsystem* Sessions = GetSubsystem<UNSESessionSubsystem>())
+		Sessions->CreateSession(2, false);
+}
+
+void UNightSkyGameInstance::LoginOnline()
+{
+	if (!Online::GetSubsystem(GetWorld()))
+		return;
+	if (UNSESessionSubsystem* Sessions = GetSubsystem<UNSESessionSubsystem>())
+		Sessions->Login();
+}
+
+void UNightSkyGameInstance::OpenMainMenu(const UObject* WorldContextObject)
+{
+	const UGameInstance* GI = UGameplayStatics::GetGameInstance(WorldContextObject);
+	const UNightSkyGameInstance* NSGI = Cast<UNightSkyGameInstance>(GI);
+	if (NSGI && !NSGI->MainMenuMap.IsNull())
+	{
+		UGameplayStatics::OpenLevelBySoftObjectPtr(WorldContextObject, NSGI->MainMenuMap);
+		return;
+	}
+	UGameplayStatics::OpenLevel(WorldContextObject, FName(TEXT("MainMenu_PL")));
+}
+
+void UNightSkyGameInstance::OpenStory(const UObject* WorldContextObject)
+{
+	const UNightSkyGameInstance* NSGI = Cast<UNightSkyGameInstance>(UGameplayStatics::GetGameInstance(WorldContextObject));
+	if (NSGI && !NSGI->StoryMap.IsNull())
+	{
+		UGameplayStatics::OpenLevelBySoftObjectPtr(WorldContextObject, NSGI->StoryMap);
+		return;
+	}
+	UE_LOG(LogTemp, Warning, TEXT("OpenStory: the game instance has no StoryMap set"));
 }

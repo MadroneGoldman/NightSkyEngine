@@ -39,7 +39,7 @@ struct FBattleData
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	TArray<int32> ColorIndicesP2;
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	EBattleFormat BattleFormat;
+	EBattleFormat BattleFormat{};
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	int32 TimeUntilRoundStart = 180;
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
@@ -47,7 +47,7 @@ struct FBattleData
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	int32 StartRoundTimer = 99;
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	UPrimaryStageData* Stage;
+	UPrimaryStageData* Stage = nullptr;
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	FGameplayTag MusicName;
 	UPROPERTY()
@@ -68,10 +68,43 @@ class NIGHTSKYENGINE_API UNightSkyGameInstance : public UGameInstance
 	virtual void Init() override;
 
 protected:
-	UFUNCTION(BlueprintImplementableEvent, Category = "Replays")  
+	/** Called when FindReplays finishes. By default it hands the list to every open widget with an OnFindReplays(Array) function (WBP_ReplayMenu). */
+	UFUNCTION(BlueprintNativeEvent, Category = "Replays")
 	void BP_OnFindReplaysComplete(const TArray<UReplaySaveInfo*> &AllReplays);
-	
+
 public:
+	/** Menus: this player hosts the match (local play, or the online host). */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category="Menu")
+	bool IsHost = true;
+	/** Menus: how many fighters each side picks on character select. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category="Menu")
+	int32 TeamSizeP1 = 1;
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category="Menu")
+	int32 TeamSizeP2 = 1;
+	/** The level the main menu's Story button opens. */
+	UPROPERTY(BlueprintReadOnly, EditAnywhere, Category="Menu")
+	TSoftObjectPtr<UWorld> StoryMap;
+	/** The project's main menu level: menus, replays and online errors return here. Empty = NSE's MainMenu_PL. */
+	UPROPERTY(BlueprintReadOnly, EditAnywhere, Category="Menu")
+	TSoftObjectPtr<UWorld> MainMenuMap;
+
+	/** Sizes BattleData's player and colour lists to TeamSizeP1/P2, emptied. */
+	UFUNCTION(BlueprintCallable, Category="Menu")
+	void InitPlayerList();
+	/** Creates the online session when this player is the host. */
+	UFUNCTION(BlueprintCallable, Category="Online")
+	void HostSession();
+	/** Logs in to the online subsystem, if there is one. */
+	UFUNCTION(BlueprintCallable, Category="Online")
+	void LoginOnline();
+
+	/** Opens the game instance's MainMenuMap (NSE's MainMenu_PL when it is empty). */
+	UFUNCTION(BlueprintCallable, Category="Menu", meta=(WorldContext="WorldContextObject"))
+	static void OpenMainMenu(const UObject* WorldContextObject);
+	/** Opens the game instance's StoryMap. */
+	UFUNCTION(BlueprintCallable, Category="Menu", meta=(WorldContext="WorldContextObject"))
+	static void OpenStory(const UObject* WorldContextObject);
+
 	bool FinishedLoadingForNetworkBattle = false;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
