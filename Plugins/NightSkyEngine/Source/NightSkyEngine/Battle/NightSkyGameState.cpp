@@ -25,6 +25,7 @@
 #include "NightSkyEngine/Data/SubroutineData.h"
 #include "NightSkyEngine/Network/FighterRunners.h"
 #include "NightSkyEngine/Miscellaneous/NightSkyGameInstance.h"
+#include "NightSkyEngine/Miscellaneous/Logging.h"
 #include "NightSkyEngine/UI/NightSkyBattleHudActor.h"
 #include "NightSkyEngine/UI/NightSkyBattleWidget.h"
 
@@ -100,6 +101,22 @@ void ANightSkyGameState::Init()
 			BattleExtensions.Add(NewObject<UBattleExtension>(this, Extension));
 			BattleExtensions.Last()->Parent = this;
 			BattleExtensionNames.Add(BattleExtensions.Last()->Name);
+		}
+	}
+
+	// An unpicked slot (null) would spawn a bare APlayerObject with no states, which crashes on its first update.
+	// Drop those (and their colours) as long as the side keeps at least one fighter.
+	for (const bool bP1 : {true, false})
+	{
+		auto& List = bP1 ? GameInstance->BattleData.PlayerListP1 : GameInstance->BattleData.PlayerListP2;
+		auto& Colors = bP1 ? GameInstance->BattleData.ColorIndicesP1 : GameInstance->BattleData.ColorIndicesP2;
+		const bool bAnyPicked = List.ContainsByPredicate([](const TSoftObjectPtr<UPrimaryCharaData>& Entry) { return !Entry.IsNull(); });
+		for (int i = List.Num() - 1; bAnyPicked && i >= 0; i--)
+		{
+			if (!List[i].IsNull()) continue;
+			UE_LOG(LogNightSkyEngine, Warning, TEXT("Battle init: dropping empty %s slot %d"), bP1 ? TEXT("P1") : TEXT("P2"), i);
+			List.RemoveAt(i);
+			if (Colors.IsValidIndex(i)) Colors.RemoveAt(i);
 		}
 	}
 
