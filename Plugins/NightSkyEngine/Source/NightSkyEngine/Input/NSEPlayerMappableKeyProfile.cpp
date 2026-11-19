@@ -5,6 +5,8 @@
 
 #include "InputAction.h"
 #include "InputMappingContext.h"
+#include "NSEPlayerMappableKeySettings.h"
+#include "Algo/AnyOf.h"
 #include UE_INLINE_GENERATED_CPP_BY_NAME(NSEPlayerMappableKeyProfile)
 
 FName UNSEPlayerMappableKeyProfile::GetPressRowForReleaseAction(const UInputAction* Action)
@@ -48,4 +50,48 @@ int32 UNSEPlayerMappableKeyProfile::RemoveReleaseRows()
 		PlayerMappedKeys.Remove(Name);
 	}
 	return ToRemove.Num();
+}
+
+int32 UNSEPlayerMappableKeyProfile::RemoveForeignMappings()
+{
+	// The merge also overwrote the row's own default keys, so the whole row goes; re-registering the contexts
+	// (UWitchBattleInputSubsystem) rebuilds it from the owner's mapping context.
+	TArray<FName> Rows;
+	for (const TPair<FName, FKeyMappingRow>& Row : PlayerMappedKeys)
+	{
+		for (const FPlayerKeyMapping& Mapping : Row.Value.Mappings)
+		{
+			const UInputAction* Action = Mapping.GetAssociatedInputAction();
+			const UNSEPlayerMappableKeySettings* Settings = Action ? Cast<UNSEPlayerMappableKeySettings>(Action->GetPlayerMappableKeySettings().Get()) : nullptr;
+			if (Settings && Settings->Name != Row.Key)
+			{
+				Rows.Add(Row.Key);
+				break;
+			}
+		}
+	}
+	// Saves from before NSE's battle pause was renamed (PauseGame -> BattlePause): Narrative's PauseGame row kept NSE's
+	// keys (Enter) as its own keys and defaults. If it still has BattlePause's keys, rebuild it.
+	const FKeyMappingRow* Battle = PlayerMappedKeys.Find(TEXT("BattlePause"));
+	const FKeyMappingRow* Pause = PlayerMappedKeys.Find(TEXT("PauseGame"));
+	if (Battle && Pause && !Rows.Contains(TEXT("PauseGame")))
+	{
+		for (const FPlayerKeyMapping& A : Pause->Mappings)
+		{
+			const bool bSame = Algo::AnyOf(Battle->Mappings, [&A](const FPlayerKeyMapping& B)
+			{
+				return B.GetSlot() == A.GetSlot() && B.GetDefaultKey() == A.GetCurrentKey();
+			});
+			if (bSame)
+			{
+				Rows.Add(TEXT("PauseGame"));
+				break;
+			}
+		}
+	}
+	for (const FName& Name : Rows)
+	{
+		PlayerMappedKeys.Remove(Name);
+	}
+	return Rows.Num();
 }

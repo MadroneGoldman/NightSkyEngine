@@ -26,6 +26,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Input")
 	int32 RemoveReleaseRows();
 
+	/**
+	 * Drops rows that hold an NSE action mapping that isn't theirs. Two contexts using one mapping name merge into one
+	 * row: NSE's battle pause used "PauseGame" like Narrative's pause, so Narrative's Escape got NSE's Enter. Returns how many.
+	 */
+	UFUNCTION(BlueprintCallable, Category="Input")
+	int32 RemoveForeignMappings();
+
 	/** Row whose keys a release action follows: IA_Release<X> -> Press<X>. None for any other action. */
 	static FName GetPressRowForReleaseAction(const UInputAction* Action);
 };
