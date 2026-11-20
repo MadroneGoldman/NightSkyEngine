@@ -1999,6 +1999,11 @@ void APlayerObject::HandleProximityBlock()
 	}
 	if (!(GetEnableFlags(StateMachine_Primary) & ENB_ProximityBlock))
 		return;
+	// Madrone change: no proximity guard under training auto guard. The dummy blocks once, when the hit arrives (auto
+	// guard picks the stance), instead of entering the guard state early and again on the hit (the block state's sound
+	// played twice).
+	if (GameState && GameState->ShouldAutoGuard(this))
+		return;
 
 	FInputCondition Input1;
 	FInputBitmask BitmaskDownLeft;
