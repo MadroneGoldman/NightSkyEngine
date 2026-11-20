@@ -16,7 +16,5 @@ UE_DEFINE_GAMEPLAY_TAG_COMMENT(Sound_Hit_Slash_L, "Sound.Hit.Slash.L", "Slash Hi
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(Sound_Hit_Slash_SP, "Sound.Hit.Slash.SP", "Slash Hit (Special) Sound");
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(Sound_Hit_Clash, "Sound.Hit.Clash", "Hit Clash Sound");
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(Sound_Parry, "Sound.Parry", "Successful Parry Sound");
-// Madrone change: declared in SoundData.h but never defined. The guard sound every blocked hit plays (BattleObject.cpp).
-UE_DEFINE_GAMEPLAY_TAG_COMMENT(Sound_Guard, "Sound.Guard", "Guard (Blocked Hit) Sound");
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(Sound_Land, "Sound.Land", "Landing Sound");
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(Sound_Landing_Crash, "Sound.Landing.Crash", "Landing Sound (Crash)");
