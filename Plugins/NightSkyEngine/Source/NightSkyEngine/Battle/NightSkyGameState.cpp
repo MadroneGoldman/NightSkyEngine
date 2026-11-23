@@ -1997,7 +1997,11 @@ APlayerObject* ANightSkyGameState::SwitchMainPlayer(APlayerObject* InPlayer, con
 		return nullptr;
 	if (BattleState.TeamData[IsP1 == false].CooldownTimer[TeamIndex] > 0 && !bForce) return nullptr;
 
+	// Madrone change: only the fighter on screen can switch out. A tag out state calls this every frame it runs, and the
+	// next frame the one who just left (now team index 1) found itself at index 1 and made itself main again, off screen.
+	if (InPlayer != GetMainPlayer(IsP1)) return nullptr;
 	const auto NewPlayer = GetTeam(IsP1)[TeamIndex];
+	if (NewPlayer == InPlayer) return nullptr;
 	if (NewPlayer->CurrentHealth == 0) return nullptr;
 	if (NewPlayer->PlayerFlags & PLF_IsOnScreen)
 	{
