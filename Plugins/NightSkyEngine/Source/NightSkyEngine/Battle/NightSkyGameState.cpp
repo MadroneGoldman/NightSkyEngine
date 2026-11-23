@@ -140,6 +140,8 @@ void ANightSkyGameState::Init()
 			Players.Add(GetWorld()->SpawnActor<APlayerObject>(Player->PlayerClass,
 			                                                  BattleSceneTransform));
 			SpawnedPlayer = Players.Last();
+			// Madrone change: the HUD shows CharacterName; only assists were given theirs
+			SpawnedPlayer->CharacterName = Player->CharaFriendlyName.IsEmpty() ? FText::FromName(Player->CharaName) : Player->CharaFriendlyName;
 			SpawnedPlayer->ColorIndex = 1;
 			if (GameInstance->BattleData.ColorIndicesP1.Num() > i)
 				SpawnedPlayer->ColorIndex = GameInstance->BattleData.ColorIndicesP1[i];
@@ -164,6 +166,8 @@ void ANightSkyGameState::Init()
 			Players.Add(GetWorld()->SpawnActor<APlayerObject>(Player->PlayerClass,
 			                                                  BattleSceneTransform));
 			SpawnedPlayer = Players.Last();
+			// Madrone change: the HUD shows CharacterName; only assists were given theirs
+			SpawnedPlayer->CharacterName = Player->CharaFriendlyName.IsEmpty() ? FText::FromName(Player->CharaName) : Player->CharaFriendlyName;
 			SpawnedPlayer->ColorIndex = 1;
 			if (GameInstance->BattleData.ColorIndicesP2.Num() > i)
 				SpawnedPlayer->ColorIndex = GameInstance->BattleData.ColorIndicesP2[i];
@@ -258,6 +262,7 @@ void ANightSkyGameState::PlayIntros()
 		BattleState.BattlePhase = EBattlePhase::Battle;
 		GetMainPlayer(true)->JumpToStatePrimary(State_Universal_Stand);
 		GetMainPlayer(false)->JumpToStatePrimary(State_Universal_Stand);
+		bHudRoundInitPending = true; // Madrone change: no intro end to run the HUD's round init (see UpdateHUD)
 		return;
 	}
 	BattleState.BattlePhase = EBattlePhase::Intro;
@@ -1810,6 +1815,14 @@ void ANightSkyGameState::HUDInit() const
 void ANightSkyGameState::UpdateHUD()
 {
 	if (bIsResimulating) return;
+	// Madrone change: training's HUD round init (teammate health bars, names), once the widgets are built
+	if (bHudRoundInitPending && BattleHudActor && BattleHudActor->TopWidget && BattleHudActor->BottomWidget
+		&& BattleHudActor->TopWidget->GetCachedWidget().IsValid())
+	{
+		bHudRoundInitPending = false;
+		BattleHudActor->BottomWidget->RoundInitImplementation(BattleState.TeamData[0].TeamCount, BattleState.TeamData[1].TeamCount);
+		BattleHudActor->TopWidget->RoundInitImplementation(BattleState.TeamData[0].TeamCount, BattleState.TeamData[1].TeamCount);
+	}
 	if (BattleState.bHUDVisible)
 	{
 		BattleHudActor->TopWidget->SetVisibility(ESlateVisibility::Visible);

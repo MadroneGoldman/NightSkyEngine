@@ -34,6 +34,12 @@ public:
 	virtual void SetMainPlayerIndex(bool IsP1, int PlayerIndex) override;
 	
 	void BingHealthDelegates();
+
+	/** Madrone change: P1Name / P2Name show each side's fighter on screen, P1TagName / P2TagName its partners (" / "
+	 * between them, hidden when there are none). Text blocks are found by name, so a layout without them still works.
+	 * Runs at round init and on every tag, so the names follow who is in. */
+	UFUNCTION(BlueprintCallable, Category="Names")
+	void RefreshPlayerNames();
 	
 protected:
 	virtual void NativeOnInitialized() override;

@@ -373,6 +373,9 @@ public:
 	class AFighterLocalRunner* FighterRunner = nullptr;;
 	UPROPERTY(BlueprintReadWrite)
 	ANightSkyBattleHudActor* BattleHudActor = nullptr;;
+	// Madrone change: training skips the intro, whose end runs the HUD widgets' RoundInitImplementation (teammate health
+	// bars, player names). UpdateHUD runs it once instead, when the widgets have been built. Presentation only.
+	bool bHudRoundInitPending = false;
 	
 	int32 LocalFrame = 0;
 	int32 RemoteFrame = 0;
