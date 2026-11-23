@@ -260,6 +260,13 @@ void ANightSkyGameState::Init()
 	HUDInit();
 }
 
+// Madrone change: the fighter has a state for its IntroName. The template characters' IntroName (Manny.Stand) names no
+// state, so every battle start logged "Could not find state"; without the jump the intro ends the same way, at once.
+static bool HasIntroState(const APlayerObject* Player)
+{
+	return Player && Player->IntroName.IsValid() && Player->PrimaryStateMachine.StateNames.Contains(Player->IntroName);
+}
+
 void ANightSkyGameState::PlayIntros()
 {
 	if (GameInstance->IsTraining)
@@ -272,7 +279,7 @@ void ANightSkyGameState::PlayIntros()
 	}
 	BattleState.BattlePhase = EBattlePhase::Intro;
 	BattleState.CurrentIntroSide = INT_P1;
-	GetMainPlayer(true)->JumpToStatePrimary(GetMainPlayer(true)->IntroName);
+	if (HasIntroState(GetMainPlayer(true))) GetMainPlayer(true)->JumpToStatePrimary(GetMainPlayer(true)->IntroName); // Madrone change
 	BattleHudVisibility(false);
 }
 
@@ -639,7 +646,8 @@ void ANightSkyGameState::UpdateGameState(int32 Input1, int32 Input2, bool bShoul
 			}
 			if (GetMainPlayer(true)->GetCurrentStateName(StateMachine_Primary) != GetMainPlayer(true)->IntroName)
 			{
-				GetMainPlayer(false)->JumpToStatePrimary(GetMainPlayer(false)->IntroName);
+				// Madrone change: only into an intro state the fighter has (most have none: IntroName is a placeholder).
+				if (HasIntroState(GetMainPlayer(false))) GetMainPlayer(false)->JumpToStatePrimary(GetMainPlayer(false)->IntroName);
 				BattleState.CurrentIntroSide = INT_P2;
 			}
 		}
