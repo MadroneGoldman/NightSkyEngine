@@ -17,7 +17,7 @@ void UTeammateBarBox::SetHealthPercent(int index,float InPercent)
 	if (index == 0){return;}
 	index --;
 	
-	if ((TeammateHealthBars.Num() == TeammateCount) && TeammateHealthBars[index].IsValid())
+	if (TeammateHealthBars.IsValidIndex(index) && TeammateHealthBars[index].IsValid())
 	{
 		TeammateHealthBars[index]->SetHealthPercent(InPercent);
 	}
@@ -29,7 +29,7 @@ void UTeammateBarBox::SetRecoverableHealthPercent(int index,float InPercent)
 	if (index == 0){return;}
 	index --;
 	
-	if ((TeammateHealthBars.Num() == TeammateCount) && TeammateHealthBars[index].IsValid())
+	if (TeammateHealthBars.IsValidIndex(index) && TeammateHealthBars[index].IsValid())
 	{
 		TeammateHealthBars[index]->SetRecoverableHealthPercent(InPercent);
 	}
@@ -44,7 +44,7 @@ void UTeammateBarBox::AddHealthbars(int NewCount)
 		TeammateCount = NewCount;
 		
 		//Spacer at the top
-		MyVerticalBox->AddSlot().FillHeight(1.5f)//.VAlign(VAlign_Bottom)
+		MyVerticalBox->AddSlot().FillHeight(1.5f)
 			[
 				SNew(SSpacer)
 			];
@@ -52,18 +52,40 @@ void UTeammateBarBox::AddHealthbars(int NewCount)
 		for (int i = 0; i < TeammateCount; i++)
 		{
 			TSharedPtr<SHealthBar> CurrentTeammateHealthBar;
-			MyVerticalBox->AddSlot()//.MinHeight(7).MaxHeight(23.3)//.VAlign(VAlign_Bottom)
+			MyVerticalBox->AddSlot()
 			[
-				//SNew(SHealthBar)
 				SAssignNew(CurrentTeammateHealthBar, SHealthBar)
-				
-				//SNew(STextBlock)
-				//.Text(FText::FromString("Header Text"))
+				.BarFillType(BarFillType)
 			];
-			
-			MakeDynamicFillImage(CurrentTeammateHealthBar);
+			ApplyStyle(*CurrentTeammateHealthBar);
 			TeammateHealthBars.Add(CurrentTeammateHealthBar);
 		}
+	}
+}
+
+void UTeammateBarBox::ApplyStyle(SHealthBar& Bar) const
+{
+	// Madrone change: the Slate bar owns its brush and dynamic material (this leaked one brush per bar per round).
+	Bar.SetBarFillType(BarFillType);
+	Bar.SetBarStyle(StyleOverride.IsSet() ? StyleOverride.GetValue() : FHealthBarStyle::GetDefault(), &ImageFill);
+}
+
+void UTeammateBarBox::SetStyleOverride(const FHealthBarStyle& InStyle)
+{
+	StyleOverride = InStyle;
+	for (const TSharedPtr<SHealthBar>& Bar : TeammateHealthBars)
+	{
+		if (Bar.IsValid()) ApplyStyle(*Bar);
+	}
+}
+
+void UTeammateBarBox::ClearStyleOverride()
+{
+	if (!StyleOverride.IsSet()) return;
+	StyleOverride.Reset();
+	for (const TSharedPtr<SHealthBar>& Bar : TeammateHealthBars)
+	{
+		if (Bar.IsValid()) ApplyStyle(*Bar);
 	}
 }
 
@@ -76,41 +98,4 @@ void UTeammateBarBox::ReleaseSlateResources(bool bReleaseChildren)
 	TeammateHealthBars.Empty();
 	
 	Super::ReleaseSlateResources(bReleaseChildren);
-}
-
-void UTeammateBarBox::MakeDynamicFillImage(TSharedPtr<SHealthBar>& TeammateHealthBar)
-{
-	FSlateBrush* DynamicMatBrush = new FSlateBrush();
-	UMaterialInstanceDynamic* NewDynMaterial = nullptr;
-	if (ImageFill.GetResourceObject() != nullptr)
-	{
-		if (const auto MInstance = Cast<UMaterialInterface>( ImageFill.GetResourceObject()); IsValid(MInstance))
-		{
-			UMaterialInstanceDynamic* DynamicMaterial = Cast<UMaterialInstanceDynamic>(MInstance);
-
-			if ( !DynamicMaterial )
-			{
-				NewDynMaterial = UMaterialInstanceDynamic::Create(MInstance, this);
-				DynamicMatBrush->SetResourceObject(NewDynMaterial);
-				NewDynMaterial->SetScalarParameterValue(FName(TEXT("HealthPercent")), 1.0f);
-				NewDynMaterial->SetScalarParameterValue(FName(TEXT("RecoverableHealthPercent")), 1.0f);
-				
-				// mat fills from right to left by default
-				if (BarFillType == EHealthBarFillType::LeftToRight)
-				{
-					NewDynMaterial->SetScalarParameterValue(FName(TEXT("LeftToRight")), 1.0f);
-				}
-			}
-		}
-	}
-	
-	if (DynamicMatBrush->GetResourceObject() != nullptr)
-	{
-		TeammateHealthBar->SetDynamicMaterial(NewDynMaterial);
-		TeammateHealthBar->SetFillImage(DynamicMatBrush);
-	}
-	else
-	{
-		TeammateHealthBar->SetFillImage(&ImageFill);
-	}
 }

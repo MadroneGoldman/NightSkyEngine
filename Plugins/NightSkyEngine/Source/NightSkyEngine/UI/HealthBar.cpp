@@ -46,6 +46,7 @@ void UHealthBar::ReleaseSlateResources(bool bReleaseChildren)
 TSharedRef<SWidget> UHealthBar::RebuildWidget()
 {
 	MyHealthBar = SNew(SHealthBar);
+	SynchronizeHealthBar();
 	return MyHealthBar.ToSharedRef();
 }
 
@@ -65,49 +66,31 @@ void UHealthBar::SynchronizeProperties()
 
 void UHealthBar::SynchronizeHealthBar()
 {
-	TAttribute<FSlateColor> FillColorAndOpacityBinding = PROPERTY_BINDING(FSlateColor, FillColorAndOpacity);
-	
-	MyHealthBar->SetHealthPercent(HealthPercent);
-	MyHealthBar->SetRecoverableHealthPercent(RecoverableHealthPercent);
-	MyHealthBar->SetFillColorAndOpacity(FillColorAndOpacityBinding);
-	MyHealthBar->SetStyle(&WidgetStyle);
+	if (!MyHealthBar.IsValid())
+	{
+		return;
+	}
+	// Madrone change: the Slate bar owns its brush and dynamic material (this leaked a brush on every sync).
 	MyHealthBar->SetBarFillType(BarFillType);
 	MyHealthBar->SetBarFillStyle(BarFillStyle);
 	MyHealthBar->SetBorderPadding(BorderPadding);
-	
+	MyHealthBar->SetHealthPercent(HealthPercent);
+	MyHealthBar->SetRecoverableHealthPercent(RecoverableHealthPercent);
+	MyHealthBar->SetBarStyle(StyleOverride.IsSet() ? StyleOverride.GetValue() : WidgetStyle, &ImageFill);
+}
 
-	FSlateBrush* DynamicMatBrush = new FSlateBrush();
-	UMaterialInstanceDynamic* NewDynMaterial = nullptr;
-	if (ImageFill.GetResourceObject() != nullptr)
-	{
-		if (const auto MInstance = Cast<UMaterialInterface>( ImageFill.GetResourceObject()); IsValid(MInstance))
-		{
-			UMaterialInstanceDynamic* DynamicMaterial = Cast<UMaterialInstanceDynamic>(MInstance);
+void UHealthBar::SetStyleOverride(const FHealthBarStyle& InStyle)
+{
+	StyleOverride = InStyle;
+	SynchronizeHealthBar();
+}
 
-			if ( !DynamicMaterial )
-			{
-				NewDynMaterial = UMaterialInstanceDynamic::Create(MInstance, this);
-				DynamicMatBrush->SetResourceObject(NewDynMaterial);
-				NewDynMaterial->SetScalarParameterValue(FName(TEXT("HealthPercent")), 1.0f);
-				NewDynMaterial->SetScalarParameterValue(FName(TEXT("RecoverableHealthPercent")), 1.0f);
-				
-				// mat fills from right to left by default
-				if (BarFillType == EHealthBarFillType::LeftToRight)
-				{
-					NewDynMaterial->SetScalarParameterValue(FName(TEXT("LeftToRight")), 1.0f);
-				}
-			}
-		}
-	}
-	
-	if (DynamicMatBrush->GetResourceObject() != nullptr)
+void UHealthBar::ClearStyleOverride()
+{
+	if (StyleOverride.IsSet())
 	{
-		MyHealthBar->SetDynamicMaterial(NewDynMaterial);
-		MyHealthBar->SetFillImage(DynamicMatBrush);
-	}
-	else
-	{
-		MyHealthBar->SetFillImage(&ImageFill);
+		StyleOverride.Reset();
+		SynchronizeHealthBar();
 	}
 }
 
@@ -116,10 +99,7 @@ void UHealthBar::SetImageFill(const FSlateBrush& InBrush)
 	if(ImageFill != InBrush)
 	{
 		ImageFill = InBrush;
-		// if (MyHealthBar.IsValid())
-		// {
-		// 	MyHealthBar->InvalidateImage();
-		// }
+		SynchronizeHealthBar();
 	}
 }
 
@@ -137,10 +117,7 @@ const FHealthBarStyle& UHealthBar::GetWidgetStyle() const
 void UHealthBar::SetWidgetStyle(const FHealthBarStyle& InStyle)
 {
 	WidgetStyle = InStyle;
-	if (MyHealthBar.IsValid())
-	{
-		MyHealthBar->SetStyle(&WidgetStyle);
-	}
+	SynchronizeHealthBar();
 }
 
 float UHealthBar::GetHealthPercent() const
@@ -231,11 +208,7 @@ FLinearColor UHealthBar::GetFillColorAndOpacity() const
 
 void UHealthBar::SetFillColorAndOpacity(FLinearColor Color)
 {
-	FillColorAndOpacity = Color;
-	if (MyHealthBar.IsValid())
-	{
-		MyHealthBar->SetFillColorAndOpacity(FillColorAndOpacity);
-	}
+	FillColorAndOpacity = Color; // not drawn: the fill material has its own colours
 }
 
 // void UHealthBar::OnHealthChanged(const float Value)

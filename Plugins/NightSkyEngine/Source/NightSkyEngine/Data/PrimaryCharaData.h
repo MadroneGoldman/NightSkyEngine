@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
+#include "NightSkyEngine/UI/NSEStyle.h"
 #include "PrimaryCharaData.generated.h"
 
 class APlayerObject;
@@ -39,4 +40,9 @@ public:
 
 	UPROPERTY(BlueprintReadOnly, EditAnywhere)
 	bool IsAssist = false;
+
+	/** Madrone change: the battle HUD look whenever this character fights (e.g. a boss): an NSE Battle Hud Style asset,
+	 * its priority, whole HUD or own side, and whether only while on screen. An overworld encounter can set its own. */
+	UPROPERTY(BlueprintReadOnly, EditAnywhere, Category="HUD")
+	FNSEHudStyleRequest BattleHudStyle;
 };

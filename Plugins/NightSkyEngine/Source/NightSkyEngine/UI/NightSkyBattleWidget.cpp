@@ -12,6 +12,11 @@ void UNightSkyBattleWidget::SetMainPlayerIndex(bool IsP1, int PlayerIndex)
 	
 }
 
+void UNightSkyBattleWidget::ApplyBattleHudStyle(bool bIsP1, const FNSEBattleHudStyle* Style, USlateWidgetStyleAsset* StyleAsset)
+{
+	OnBattleHudStyleChanged(bIsP1, Style ? StyleAsset : nullptr, Style ? Style->ThemeId : NAME_None);
+}
+
 void UNightSkyBattleWidget::RoundInitImplementation(int P1TeamSize, int P2TeamSize)
 {
 	RoundInit(P1TeamSize, P2TeamSize);

@@ -21,15 +21,12 @@ void FNightSkyEngineEditorModule::StartupModule()
 
 void FNightSkyEngineEditorModule::OnPostEngineInit()
 {
-	// Register slate style overrides
-	NSEStyleManager::Initialize();
+	// Register slate style overrides (the runtime module already has; it also unregisters it)
+	FNSEStyle::Initialize();
 }
 
 void FNightSkyEngineEditorModule::ShutdownModule()
 {
-	// Unregister slate style overrides
-	NSEStyleManager::Shutdown();
-
 	if (FPropertyEditorModule* PropertyEditor = FModuleManager::GetModulePtr<FPropertyEditorModule>("PropertyEditor"))
 	{
 		PropertyEditor->UnregisterCustomPropertyTypeLayout("InputConditionList");

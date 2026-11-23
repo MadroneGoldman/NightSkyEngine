@@ -40,11 +40,25 @@ public:
 	 * Runs at round init and on every tag, so the names follow who is in. */
 	UFUNCTION(BlueprintCallable, Category="Names")
 	void RefreshPlayerNames();
+
+	/** Madrone change: restyles a side's bars (main and teammates), the main bar's size and the names. */
+	virtual void ApplyBattleHudStyle(bool bIsP1, const FNSEBattleHudStyle* Style, USlateWidgetStyleAsset* StyleAsset) override;
+	virtual void OnMainPlayersChanged() override;
+
+#if WITH_EDITORONLY_DATA
+	/** Designer only: shows this battle HUD style on both sides (an NSE Battle Hud Style asset). */
+	UPROPERTY(EditAnywhere, Category="Style")
+	TObjectPtr<USlateWidgetStyleAsset> DesignerPreviewStyle;
+#endif
 	
 protected:
 	virtual void NativeOnInitialized() override;
 	virtual void NativeConstruct() override;
+	virtual void NativePreConstruct() override;
 	
 private:
+	/** The Blueprint's own main bar scale and name fonts, put back when a style is cleared. */
+	TOptional<FVector2D> AuthoredBarScale[2];
+	TMap<FName, TPair<FSlateFontInfo, FSlateColor>> AuthoredNames;
 	
 };

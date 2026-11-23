@@ -17,6 +17,69 @@ void UNickBattleHudTop::NativeConstruct()
 	BingHealthDelegates();
 }
 
+void UNickBattleHudTop::NativePreConstruct()
+{
+	Super::NativePreConstruct();
+#if WITH_EDITORONLY_DATA
+	if (IsDesignTime() && DesignerPreviewStyle)
+	{
+		const FNSEBattleHudStyle* Style = DesignerPreviewStyle->GetStyle<FNSEBattleHudStyle>();
+		ApplyBattleHudStyle(true, Style, DesignerPreviewStyle);
+		ApplyBattleHudStyle(false, Style, DesignerPreviewStyle);
+	}
+#endif
+}
+
+void UNickBattleHudTop::ApplyBattleHudStyle(const bool bIsP1, const FNSEBattleHudStyle* Style, USlateWidgetStyleAsset* StyleAsset)
+{
+	UHealthBar* Bar = bIsP1 ? P1HealthBar : P2HealthBar;
+	UTeammateBarBox* Teammates = bIsP1 ? P1TeammateBox : P2TeammateBox;
+	const int32 Side = bIsP1 ? 0 : 1;
+	if (Bar)
+	{
+		if (!AuthoredBarScale[Side].IsSet()) AuthoredBarScale[Side] = Bar->GetRenderTransform().Scale;
+		if (Style)
+		{
+			Bar->SetStyleOverride(Style->MainHealthBar);
+			Bar->SetRenderScale(AuthoredBarScale[Side].GetValue() * Style->MainBarScale);
+		}
+		else
+		{
+			Bar->ClearStyleOverride();
+			Bar->SetRenderScale(AuthoredBarScale[Side].GetValue());
+		}
+	}
+	if (Teammates)
+	{
+		if (Style) Teammates->SetStyleOverride(Style->TeammateHealthBar);
+		else Teammates->ClearStyleOverride();
+	}
+	for (const TCHAR* Name : bIsP1 ? TArray<const TCHAR*>{TEXT("P1Name"), TEXT("P1TagName")} : TArray<const TCHAR*>{TEXT("P2Name"), TEXT("P2TagName")})
+	{
+		UTextBlock* Text = Cast<UTextBlock>(GetWidgetFromName(Name));
+		if (!Text) continue;
+		const TPair<FSlateFontInfo, FSlateColor>& Authored = AuthoredNames.FindOrAdd(Name, {Text->GetFont(), Text->GetColorAndOpacity()});
+		FSlateFontInfo Font = Authored.Key;
+		if (Style && Style->bOverrideNameFont)
+		{
+			const float Size = Font.Size; // keep each label's own size (partner names are smaller)
+			Font = Style->NameFont;
+			Font.Size = Size;
+		}
+		Text->SetFont(Font);
+		Text->SetColorAndOpacity(Style && Style->bOverrideNameColor ? Style->NameColor : Authored.Value);
+	}
+	Super::ApplyBattleHudStyle(bIsP1, Style, StyleAsset);
+}
+
+void UNickBattleHudTop::OnMainPlayersChanged()
+{
+	// The team arrays list the fighter on screen first, so the main bars always show index 0.
+	if (P1HealthBar) P1HealthBar->SetMainPlayerIndex(0);
+	if (P2HealthBar) P2HealthBar->SetMainPlayerIndex(0);
+	RefreshPlayerNames();
+}
+
 void UNickBattleHudTop::NativeOnInitialized()
 {
 	Super::NativeOnInitialized();
@@ -53,15 +116,10 @@ void UNickBattleHudTop::RoundInitImplementation(int P1TeamSize, int P2TeamSize)
 
 void UNickBattleHudTop::SetMainPlayerIndex(bool IsP1, int PlayerIndex)
 {
-	if (IsP1)
-	{
-		P1HealthBar->SetMainPlayerIndex(PlayerIndex);
-	}
-	else
-	{
-		P2HealthBar->SetMainPlayerIndex(PlayerIndex);
-	}
-	RefreshPlayerNames(); // Madrone change: a tag changes who is in
+	// Madrone change: PlayerIndex is the side, not a team index: the team arrays (GetTeam) list the fighter on screen
+	// first, so the main bar always shows index 0 (P2's showed its partner after a tag). UpdateHUD also calls
+	// OnMainPlayersChanged for this after a rollback.
+	OnMainPlayersChanged();
 }
 
 void UNickBattleHudTop::RefreshPlayerNames()

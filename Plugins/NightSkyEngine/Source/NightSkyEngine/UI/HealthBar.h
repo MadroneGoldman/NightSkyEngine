@@ -118,6 +118,11 @@ public:
 	
 	UFUNCTION()
 	void SetMainPlayerIndex(int PlayerIndex);
+
+	/** Madrone change: a battle HUD style's bar look (FNSEBattleHudStyle), drawn instead of this widget's Style. Its
+	 * fill falls back to Image Fill when it has none. Cleared: the Blueprint's own look again. */
+	void SetStyleOverride(const FHealthBarStyle& InStyle);
+	void ClearStyleOverride();
 	
 public:
 
@@ -155,4 +160,6 @@ protected:
 private:
 	UPROPERTY()
 	int MainPlayerIndex = 0;
+
+	TOptional<FHealthBarStyle> StyleOverride;
 };

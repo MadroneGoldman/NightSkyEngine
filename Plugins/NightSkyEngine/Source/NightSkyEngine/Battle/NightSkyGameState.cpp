@@ -28,6 +28,7 @@
 #include "NightSkyEngine/Miscellaneous/Logging.h"
 #include "NightSkyEngine/UI/NightSkyBattleHudActor.h"
 #include "NightSkyEngine/UI/NightSkyBattleWidget.h"
+#include "NightSkyEngine/UI/NSEStyleManager.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(NightSkyGameState)
 
@@ -142,6 +143,7 @@ void ANightSkyGameState::Init()
 			SpawnedPlayer = Players.Last();
 			// Madrone change: the HUD shows CharacterName; only assists were given theirs
 			SpawnedPlayer->CharacterName = Player->CharaFriendlyName.IsEmpty() ? FText::FromName(Player->CharaName) : Player->CharaFriendlyName;
+			SpawnedPlayer->HudStyleRequest = Player->BattleHudStyle; // Madrone change
 			SpawnedPlayer->ColorIndex = 1;
 			if (GameInstance->BattleData.ColorIndicesP1.Num() > i)
 				SpawnedPlayer->ColorIndex = GameInstance->BattleData.ColorIndicesP1[i];
@@ -168,6 +170,7 @@ void ANightSkyGameState::Init()
 			SpawnedPlayer = Players.Last();
 			// Madrone change: the HUD shows CharacterName; only assists were given theirs
 			SpawnedPlayer->CharacterName = Player->CharaFriendlyName.IsEmpty() ? FText::FromName(Player->CharaName) : Player->CharaFriendlyName;
+			SpawnedPlayer->HudStyleRequest = Player->BattleHudStyle; // Madrone change
 			SpawnedPlayer->ColorIndex = 1;
 			if (GameInstance->BattleData.ColorIndicesP2.Num() > i)
 				SpawnedPlayer->ColorIndex = GameInstance->BattleData.ColorIndicesP2[i];
@@ -214,6 +217,7 @@ void ANightSkyGameState::Init()
 		{
 			APlayerObject* NewP1Assist = GetWorld()->SpawnActor<APlayerObject>(P1AssistData->PlayerClass); 
 			NewP1Assist->CharacterName = P1AssistData->CharaFriendlyName; 
+			NewP1Assist->HudStyleRequest = P1AssistData->BattleHudStyle; // Madrone change
 			NewP1Assist->SetActorHiddenInGame(true);
 		
 			P1Assist = NewP1Assist;
@@ -228,6 +232,7 @@ void ANightSkyGameState::Init()
 		{
 			APlayerObject* NewP2Assist = GetWorld()->SpawnActor<APlayerObject>(P2AssistData->PlayerClass); 
 			NewP2Assist->CharacterName = P2AssistData->CharaFriendlyName; 
+			NewP2Assist->HudStyleRequest = P2AssistData->BattleHudStyle; // Madrone change
 			NewP2Assist->SetActorHiddenInGame(true);
 		
 			P2Assist = NewP2Assist;
@@ -1800,6 +1805,13 @@ void ANightSkyGameState::CameraShake(const TSubclassOf<UCameraShakeBase>& Patter
 
 void ANightSkyGameState::HUDInit() const
 {
+	// Madrone change: a new fight (or HUD) gets its HUD style applied again.
+	for (int32 Side = 0; Side < 2; Side++)
+	{
+		AppliedHudStyle[Side] = nullptr;
+		bHudStyleApplied[Side] = false;
+		HudMainPlayer[Side] = nullptr;
+	}
 	if (BattleHudActor != nullptr)
 	{
 		if (BattleHudActor->TopWidget != nullptr)
@@ -1809,6 +1821,54 @@ void ANightSkyGameState::HUDInit() const
 			BattleHudActor->TopWidget->P1RecoverableHealth.Init(0, BattleState.TeamData[0].TeamCount);
 			BattleHudActor->TopWidget->P2RecoverableHealth.Init(0, BattleState.TeamData[1].TeamCount);
 		}
+	}
+}
+
+USlateWidgetStyleAsset* ANightSkyGameState::ResolveHudStyle(const bool bIsP1)
+{
+	if (HudStyleOverride.IsSet())
+	{
+		return HudStyleOverride.Style.LoadSynchronous();
+	}
+	// Player 2's fighters first, so a tie goes to player 2; within a side, the fighter on screen first (GetTeam order).
+	TArray<APlayerObject*> Fighters = GetTeam(false);
+	if (P2Assist) Fighters.Add(P2Assist);
+	Fighters.Append(GetTeam(true));
+	if (P1Assist) Fighters.Add(P1Assist);
+	const FNSEHudStyleRequest* Best = nullptr;
+	for (const APlayerObject* Fighter : Fighters)
+	{
+		if (!Fighter || !Fighter->HudStyleRequest.IsSet()) continue;
+		const FNSEHudStyleRequest& Request = Fighter->HudStyleRequest;
+		const bool bFighterP1 = Fighter->PlayerIndex == 0;
+		if (Request.Scope == ENSEHudStyleScope::OwnSide && bFighterP1 != bIsP1) continue;
+		if (Request.bOnlyWhileOnScreen && Fighter != GetMainPlayer(bFighterP1)) continue;
+		if (!Best || Request.Priority > Best->Priority) Best = &Request;
+	}
+	if (!Best && DefaultHudStyle.IsSet())
+	{
+		Best = &DefaultHudStyle;
+	}
+	return Best ? Best->Style.LoadSynchronous() : nullptr;
+}
+
+void ANightSkyGameState::UpdateHudStyles()
+{
+	UNightSkyBattleWidget* Top = BattleHudActor ? BattleHudActor->TopWidget : nullptr;
+	if (!Top || BattleState.MainPlayer[0] == nullptr || BattleState.MainPlayer[1] == nullptr) return;
+	if (HudMainPlayer[0] != BattleState.MainPlayer[0] || HudMainPlayer[1] != BattleState.MainPlayer[1])
+	{
+		HudMainPlayer[0] = BattleState.MainPlayer[0];
+		HudMainPlayer[1] = BattleState.MainPlayer[1];
+		Top->OnMainPlayersChanged();
+	}
+	for (int32 Side = 0; Side < 2; Side++)
+	{
+		USlateWidgetStyleAsset* Asset = ResolveHudStyle(Side == 0);
+		if (bHudStyleApplied[Side] && AppliedHudStyle[Side].Get() == Asset) continue;
+		bHudStyleApplied[Side] = true;
+		AppliedHudStyle[Side] = Asset;
+		Top->ApplyBattleHudStyle(Side == 0, Asset ? FNSEStyle::RegisterHudStyle(Asset) : nullptr, Asset);
 	}
 }
 
@@ -1823,6 +1883,7 @@ void ANightSkyGameState::UpdateHUD()
 		BattleHudActor->BottomWidget->RoundInitImplementation(BattleState.TeamData[0].TeamCount, BattleState.TeamData[1].TeamCount);
 		BattleHudActor->TopWidget->RoundInitImplementation(BattleState.TeamData[0].TeamCount, BattleState.TeamData[1].TeamCount);
 	}
+	UpdateHudStyles(); // Madrone change
 	if (BattleState.bHUDVisible)
 	{
 		BattleHudActor->TopWidget->SetVisibility(ESlateVisibility::Visible);

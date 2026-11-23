@@ -1,60 +1,64 @@
 ﻿#include "NSEStyleManager.h"
-#include "Styling/SlateStyleRegistry.h"
-#include "Styling/SlateTypes.h"
-#include "Misc/Paths.h"
-#include "Styling/CoreStyle.h"
-#include "SlateOptMacros.h"
-#include "Styling/SlateStyle.h"
+
 #include "NSEStyle.h"
-#include "Styling/SlateStyleMacros.h"
+#include "Styling/SlateStyleRegistry.h"
+#include "Styling/SlateWidgetStyleAsset.h"
 
-TSharedPtr< FSlateStyleSet > NSEStyleManager::StyleSet = nullptr;
+TSharedPtr<FNSEStyle> FNSEStyle::Instance = nullptr;
 
-void NSEStyleManager::Initialize()
+const FName FHealthBarStyle::TypeName(TEXT("FHealthBarStyle"));
+const FName FNSEBattleHudStyle::TypeName(TEXT("FNSEBattleHudStyle"));
+
+FNSEStyle::FNSEStyle()
+	: FSlateStyleSet(TEXT("NightSkyEngineStyle"))
 {
-	// Only register once
-	if (StyleSet.IsValid())
+	// No file brushes: the looks come from assets. "HealthBarStyle" is the plain default (the widgets' own settings).
+	Set("HealthBarStyle", FHealthBarStyle());
+}
+
+void FNSEStyle::Initialize()
+{
+	if (Instance.IsValid())
 	{
 		return;
 	}
-	
-	StyleSet = MakeShareable(new FSlateStyleSet("NightSkeEngineStyle"));
-	//StyleSet->SetContentRoot(FPaths::EngineContentDir() / TEXT("Editor/Slate"));
-	//StyleSet->SetCoreContentRoot(FPaths::EngineContentDir() / TEXT("Slate"));
-	
-	//StyleSet->SetContentRoot(FPaths::ProjectPluginsDir() / TEXT("NightSkyEngine/UI"));
-	//StyleSet->SetCoreContentRoot(FPaths::EngineContentDir() / TEXT("Editor/Slate"));
-	
-	StyleSet->SetContentRoot(FPaths::EngineContentDir() / TEXT("Editor/Slate"));
-	StyleSet->SetCoreContentRoot(FPaths::EngineContentDir() / TEXT("Slate"));
-
-	// Register custom style instance
-	//const FHealthBarStyle HealthBarStyleInstance = FHealthBarStyle();
-	
-	//StyleSet->Set("HealthBarStyle", FHealthBarStyle());
-	
-	StyleSet->Set( "HealthBarStyle", FHealthBarStyle()
-			//.SetBackgroundImage( BOX_BRUSH( "Common/ProgressBar_Background", FMargin(5.f/12.f) ) )
-			//.SetFillImage( BOX_BRUSH( "Common/ProgressBar_Fill", FMargin(5.f/12.f), FLinearColor( 1.0f, 0.22f, 0.0f )  ) )
-			);
-	
-	// Selection color for the active row should be ??? to align with the editor viewport.
-	// const FHealthBarStyle& HealthBarStyleInstance = FAppStyle::Get().GetWidgetStyle<FHealthBarStyle>("HealthBarStyle");
-	//
-	// StyleSet->Set("HealthBarStyle",
-	// 	FHealthBarStyle(HealthBarStyleInstance)
-	// 	//.EnableFillAnimation(false)
-	// 	);
-	
-	FSlateStyleRegistry::RegisterSlateStyle(*StyleSet.Get());
+	Instance = MakeShared<FNSEStyle>();
+	FSlateStyleRegistry::RegisterSlateStyle(*Instance);
 }
 
-void NSEStyleManager::Shutdown()
+void FNSEStyle::Shutdown()
 {
-	if (StyleSet.IsValid())
+	if (Instance.IsValid())
 	{
-		FSlateStyleRegistry::UnRegisterSlateStyle(*StyleSet.Get());
-		ensure(StyleSet.IsUnique());
-		StyleSet.Reset();
+		FSlateStyleRegistry::UnRegisterSlateStyle(*Instance);
+		Instance.Reset();
 	}
+}
+
+FNSEStyle* FNSEStyle::Get()
+{
+	return Instance.Get();
+}
+
+const FNSEBattleHudStyle* FNSEStyle::RegisterHudStyle(USlateWidgetStyleAsset* Asset)
+{
+	if (!Instance.IsValid() || !Asset)
+	{
+		return nullptr;
+	}
+	const FNSEBattleHudStyle* Source = Asset->GetStyle<FNSEBattleHudStyle>();
+	if (!Source)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("NightSkyEngineStyle: %s is not an NSE Battle Hud Style"), *Asset->GetPathName());
+		return nullptr;
+	}
+	const FName Key(*Asset->GetPathName());
+	Instance->Set(Key, *Source);
+	Instance->HudStyleAssets.AddUnique(Asset);
+	return &Instance->GetWidgetStyle<FNSEBattleHudStyle>(Key);
+}
+
+void FNSEStyle::AddReferencedObjects(FReferenceCollector& Collector)
+{
+	Collector.AddReferencedObjects(HudStyleAssets);
 }

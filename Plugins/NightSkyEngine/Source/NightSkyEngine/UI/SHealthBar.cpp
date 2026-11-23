@@ -1,92 +1,112 @@
 ﻿#include "SHealthBar.h"
+
+#include "Materials/MaterialInstanceDynamic.h"
 #include "Rendering/DrawElements.h"
+#include "UObject/Package.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(SHealthBar)
 
-
-void SHealthBar::Construct( const FArguments& InArgs )
+namespace NSEHealthBar
 {
-	check(InArgs._Style);
+	static const FName HealthParam(TEXT("HealthPercent"));
+	static const FName RecoverableParam(TEXT("RecoverableHealthPercent"));
+	static const FName DirectionParam(TEXT("LeftToRight"));
+	// The fluid material reads recoverable health with 1 added (its own convention).
+	constexpr float RecoverableOffset = 1.0f;
 
-	Style = InArgs._Style;
+	static bool HasArt(const FSlateBrush& Brush)
+	{
+		return Brush.DrawAs != ESlateBrushDrawType::NoDrawType && Brush.GetResourceObject() != nullptr;
+	}
 
-	SetHealthPercent(InArgs._HealthPercent);
-	SetRecoverableHealthPercent(InArgs._RecoverableHealthPercent);
+	/** The bar's geometry grown by Margin on each side (frames reach past the bar). */
+	static FPaintGeometry Grown(const FGeometry& Geometry, const FMargin& Margin)
+	{
+		const FVector2D Size = Geometry.GetLocalSize() + FVector2D(Margin.Left + Margin.Right, Margin.Top + Margin.Bottom);
+		return Geometry.ToPaintGeometry(Size, FSlateLayoutTransform(FVector2D(-Margin.Left, -Margin.Top)));
+	}
+}
+
+void SHealthBar::Construct(const FArguments& InArgs)
+{
 	BarFillType = InArgs._BarFillType;
 	BarFillStyle = InArgs._BarFillStyle;
-	
-	FillColorAndOpacity = InArgs._FillColorAndOpacity;
 	BorderPadding = InArgs._BorderPadding;
-
-	CurrentTickRate = 0.0f;
-	MinimumTickRate = InArgs._RefreshRate;
-	
-	FillImage = InArgs._FillImage;
-	BackgroundImage = InArgs._BackgroundImage;
-	
 	SetCanTick(false);
-	
 }
 
-void SHealthBar::SetHealthPercent(TAttribute< TOptional<float> > InPercent)
+void SHealthBar::SetHealthPercent(const float InPercent)
 {
-	if ( !HealthPercent.IdenticalTo(InPercent) )
+	if (HealthPercent != InPercent)
 	{
 		HealthPercent = InPercent;
-		if (FillImage && FillImage->GetResourceObject() != nullptr)
+		if (FillMaterial.IsValid())
 		{
-			if (const auto MIDynamic = Cast<UMaterialInstanceDynamic>(FillImage->GetResourceObject()); IsValid(MIDynamic))
-			{
-				MIDynamic->SetScalarParameterValue(FName(TEXT("HealthPercent")), HealthPercent.Get().GetValue());
-			}
+			FillMaterial->SetScalarParameterValue(NSEHealthBar::HealthParam, HealthPercent);
 		}
-		
-		Invalidate(EInvalidateWidget::LayoutAndVolatility);
-	}
-}
-
-void SHealthBar::SetRecoverableHealthPercent(TAttribute< TOptional<float> > InPercent)
-{
-	if ( !RecoverableHealthPercent.IdenticalTo(InPercent) )
-	{
-		RecoverableHealthPercent = InPercent;
-		if (FillImage && FillImage->GetResourceObject() != nullptr)
-		{
-			if (const auto MIDynamic = Cast<UMaterialInstanceDynamic>(FillImage->GetResourceObject()); IsValid(MIDynamic))
-			{
-				MIDynamic->SetScalarParameterValue(FName(TEXT("RecoverableHealthPercent")), RecoverableHealthPercent.Get().GetValue() + 1.0f);
-			}
-		}
-		Invalidate(EInvalidateWidget::LayoutAndVolatility);
-	}
-}
-
-void SHealthBar::SetStyle(const FHealthBarStyle* InStyle)
-{
-	Style = InStyle;
-
-	if (Style == nullptr)
-	{
-		Style = new FHealthBarStyle();
-		//FArguments Defaults;
-		//Style = Defaults._Style;
-	}
-
-	check(Style);
-	
-	Invalidate(EInvalidateWidget::Layout);
-}
-
-void SHealthBar::SetBarFillType(EHealthBarFillType::Type InBarFillType)
-{
-	if(BarFillType != InBarFillType)
-	{
-		BarFillType = InBarFillType;
 		Invalidate(EInvalidateWidget::Paint);
 	}
 }
 
-void SHealthBar::SetBarFillStyle(EHealthBarFillStyle::Type InBarFillStyle)
+void SHealthBar::SetRecoverableHealthPercent(const float InPercent)
+{
+	if (RecoverableHealthPercent != InPercent)
+	{
+		RecoverableHealthPercent = InPercent;
+		if (FillMaterial.IsValid())
+		{
+			FillMaterial->SetScalarParameterValue(NSEHealthBar::RecoverableParam, RecoverableHealthPercent + NSEHealthBar::RecoverableOffset);
+		}
+		Invalidate(EInvalidateWidget::Paint);
+	}
+}
+
+void SHealthBar::SetBarStyle(const FHealthBarStyle& InStyle, const FSlateBrush* FallbackFill)
+{
+	Style = InStyle;
+	FillBrush = NSEHealthBar::HasArt(Style.FillImage) || !FallbackFill ? Style.FillImage : *FallbackFill;
+	FillMaterial.Reset();
+	if (UMaterialInterface* Material = Cast<UMaterialInterface>(FillBrush.GetResourceObject()))
+	{
+		// Each bar gets its own instance: the health lives on it.
+		FillMaterial.Reset(UMaterialInstanceDynamic::Create(Material, GetTransientPackage()));
+		FillBrush.SetResourceObject(FillMaterial.Get());
+		PushMaterialParameters();
+	}
+	Invalidate(EInvalidateWidget::Paint);
+}
+
+void SHealthBar::PushMaterialParameters()
+{
+	if (!FillMaterial.IsValid())
+	{
+		return;
+	}
+	for (const TPair<FName, float>& Param : Style.ScalarParameters)
+	{
+		FillMaterial->SetScalarParameterValue(Param.Key, Param.Value);
+	}
+	for (const TPair<FName, FLinearColor>& Param : Style.VectorParameters)
+	{
+		FillMaterial->SetVectorParameterValue(Param.Key, Param.Value);
+	}
+	// The material fills from the right by default.
+	FillMaterial->SetScalarParameterValue(NSEHealthBar::DirectionParam, BarFillType == EHealthBarFillType::LeftToRight ? 1.0f : 0.0f);
+	FillMaterial->SetScalarParameterValue(NSEHealthBar::HealthParam, HealthPercent);
+	FillMaterial->SetScalarParameterValue(NSEHealthBar::RecoverableParam, RecoverableHealthPercent + NSEHealthBar::RecoverableOffset);
+}
+
+void SHealthBar::SetBarFillType(const EHealthBarFillType::Type InBarFillType)
+{
+	if (BarFillType != InBarFillType)
+	{
+		BarFillType = InBarFillType;
+		PushMaterialParameters();
+		Invalidate(EInvalidateWidget::Paint);
+	}
+}
+
+void SHealthBar::SetBarFillStyle(const EHealthBarFillStyle::Type InBarFillStyle)
 {
 	if (BarFillStyle != InBarFillStyle)
 	{
@@ -95,67 +115,17 @@ void SHealthBar::SetBarFillStyle(EHealthBarFillStyle::Type InBarFillStyle)
 	}
 }
 
-void SHealthBar::SetFillColorAndOpacity(TAttribute< FSlateColor > InFillColorAndOpacity)
+void SHealthBar::SetBorderPadding(const FVector2D InBorderPadding)
 {
-	if(!FillColorAndOpacity.IdenticalTo(InFillColorAndOpacity))
+	if (BorderPadding != InBorderPadding)
 	{
-		FillColorAndOpacity = InFillColorAndOpacity;
+		BorderPadding = InBorderPadding;
 		Invalidate(EInvalidateWidget::Paint);
 	}
 }
 
-void SHealthBar::SetBorderPadding(TAttribute< FVector2D > InBorderPadding)
-{
-	if(!BorderPadding.IdenticalTo(InBorderPadding))
-	{
-		BorderPadding = InBorderPadding;
-		Invalidate(EInvalidateWidget::Layout);
-	}
-}
-
-void SHealthBar::SetBackgroundImage(const FSlateBrush* InBackgroundImage)
-{
-	if(BackgroundImage != InBackgroundImage)
-	{
-		BackgroundImage = InBackgroundImage;
-		Invalidate(EInvalidateWidget::Layout);
-	}
-}
-
-void SHealthBar::SetFillImage(FSlateBrush* InFillImage)
-{
-	if(InFillImage && FillImage != InFillImage)
-	{
-		FillImage = InFillImage;
-		Invalidate(EInvalidateWidget::Layout);
-	}
-}
-
-void SHealthBar::SetDynamicMaterial(UMaterialInstanceDynamic* DynamicMaterial)
-{
-	DynMaterial = DynamicMaterial;
-	DynMaterial->AddToRoot();
-	
-}
-
-SHealthBar::~SHealthBar()
-{
-	DynMaterial->RemoveFromRoot();
-}
-
-const FSlateBrush* SHealthBar::GetBackgroundImage() const
-{
-	return BackgroundImage ? BackgroundImage : &Style->BackgroundImage;
-}
-
-FSlateBrush* SHealthBar::GetFillImage() const
-{
-	return FillImage;
-	//return FillImage ? FillImage : &Style->FillImage;
-}
-
 // Returns false if the clipping zone area is zero in which case we should skip drawing
-bool PushTransformedClip(FSlateWindowElementList& OutDrawElements, const FGeometry& AllottedGeometry, FVector2D InsetPadding, FVector2D HealthOrigin, FSlateRect Health)
+static bool PushTransformedClip(FSlateWindowElementList& OutDrawElements, const FGeometry& AllottedGeometry, FVector2D InsetPadding, FVector2D HealthOrigin, FSlateRect Health)
 {
 	const FSlateRenderTransform& Transform = AllottedGeometry.GetAccumulatedRenderTransform();
 
@@ -175,142 +145,48 @@ bool PushTransformedClip(FSlateWindowElementList& OutDrawElements, const FGeomet
 	return true;
 }
 
-int32 SHealthBar::OnPaint( const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled ) const
+int32 SHealthBar::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect,
+	FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const
 {
-	// Used to track the layer ID we will return.
-	int32 RetLayerId = LayerId;
+	int32 Layer = LayerId;
+	const ESlateDrawEffect DrawEffects = ShouldBeEnabled(bParentEnabled) ? ESlateDrawEffect::None : ESlateDrawEffect::DisabledEffect;
+	const FLinearColor Tint = InWidgetStyle.GetColorAndOpacityTint();
 
-	bool bEnabled = ShouldBeEnabled( bParentEnabled );
-	const ESlateDrawEffect DrawEffects = bEnabled ? ESlateDrawEffect::None : ESlateDrawEffect::DisabledEffect;
-	
-	FSlateBrush* CurrentFillImage = GetFillImage();
-
-	TOptional<float> HealthFraction = HealthPercent.Get();	
-	FVector2D BorderPaddingRef = BorderPadding.Get();
-
-	// Background image stuff not being used right now
-	/*
-	const FSlateBrush* CurrentBackgroundImage = GetBackgroundImage();
-	FSlateDrawElement::MakeBox(
-		OutDrawElements,
-		RetLayerId++,
-		AllottedGeometry.ToPaintGeometry(),
-		CurrentBackgroundImage,
-		DrawEffects
-		//InWidgetStyle.GetColorAndOpacityTint() * CurrentBackgroundImage->GetTint( InWidgetStyle )
-	);
-	*/
-	
-	if( HealthFraction.IsSet() )
+	if (NSEHealthBar::HasArt(Style.BackgroundImage))
 	{
-		//const FLinearColor FillColorAndOpacitySRGB = FLinearColor(1.0f, 0.0f, 0.0f, 0.3f);
+		FSlateDrawElement::MakeBox(OutDrawElements, Layer++, NSEHealthBar::Grown(AllottedGeometry, Style.FrameMargin),
+			&Style.BackgroundImage, DrawEffects, Tint * Style.BackgroundImage.GetTint(InWidgetStyle));
+	}
 
-		EHealthBarFillType::Type ComputedBarFillType = BarFillType;
+	if (FillBrush.DrawAs != ESlateBrushDrawType::NoDrawType)
+	{
+		EHealthBarFillType::Type FillType = BarFillType;
 		if (GSlateFlowDirection == EFlowDirection::RightToLeft)
 		{
-			switch (ComputedBarFillType)
-			{
-			case EHealthBarFillType::LeftToRight:
-				ComputedBarFillType = EHealthBarFillType::RightToLeft;
-				break;
-			case EHealthBarFillType::RightToLeft:
-				ComputedBarFillType = EHealthBarFillType::LeftToRight;
-				break;
-			}
+			FillType = FillType == EHealthBarFillType::LeftToRight ? EHealthBarFillType::RightToLeft : EHealthBarFillType::LeftToRight;
 		}
-
-		bool bScaleWithFillPerc = BarFillStyle == EHealthBarFillStyle::Scale;
-
-		//const float ClampedFraction = FMath::Clamp(HealthFraction.GetValue(), 0.0f, 1.0f);
-		const float ClampedFraction = 1.0f; //TODO: fix this its not being used (put fill bar outside of clip zone, use clip for something i guess )
-		switch (ComputedBarFillType)
+		// The material draws the health: the clip only trims the border padding.
+		const bool bClipped = FillType == EHealthBarFillType::RightToLeft
+			? PushTransformedClip(OutDrawElements, AllottedGeometry, BorderPadding, FVector2D(1, 0), FSlateRect(1, 0, 0, 1))
+			: PushTransformedClip(OutDrawElements, AllottedGeometry, BorderPadding, FVector2D(0, 0), FSlateRect(0, 0, 1, 1));
+		if (bClipped)
 		{
-			case EHealthBarFillType::RightToLeft:
-			{
-				if (PushTransformedClip(OutDrawElements, AllottedGeometry, BorderPaddingRef, FVector2D(1, 0), FSlateRect(ClampedFraction, 0, 0, 1)))
-				{
-					// Draw Fill
-					FSlateDrawElement::MakeBox(
-						OutDrawElements,
-						RetLayerId++,
-						AllottedGeometry.ToPaintGeometry(), //PaintRect,
-						CurrentFillImage,
-						DrawEffects//,
-						//FillColorAndOpacitySRGB
-					);
-
-					OutDrawElements.PopClip();
-				}
-				break;
-			}
-			case EHealthBarFillType::LeftToRight:
-			default:
-			{
-				if (PushTransformedClip(OutDrawElements, AllottedGeometry, BorderPaddingRef, FVector2D(0, 0), FSlateRect(0, 0, ClampedFraction, 1)))
-				{
-					// Draw fill
-					FSlateDrawElement::MakeBox(
-						OutDrawElements,
-						RetLayerId++,
-						AllottedGeometry.ToPaintGeometry(), //PaintRect,
-						CurrentFillImage,
-						DrawEffects//,
-						//FillColorAndOpacitySRGB
-					);
-					OutDrawElements.PopClip();
-				}
-
-
-				break;
-			}
+			FSlateDrawElement::MakeBox(OutDrawElements, Layer++, AllottedGeometry.ToPaintGeometry(), &FillBrush, DrawEffects,
+				Tint * FillBrush.GetTint(InWidgetStyle));
+			OutDrawElements.PopClip();
 		}
 	}
-	
-	//return RetLayerId - 1; crashes sometimes
-	return RetLayerId > 1 ? RetLayerId - 1 : 1; 
+
+	if (NSEHealthBar::HasArt(Style.ForegroundImage))
+	{
+		FSlateDrawElement::MakeBox(OutDrawElements, Layer++, NSEHealthBar::Grown(AllottedGeometry, Style.FrameMargin),
+			&Style.ForegroundImage, DrawEffects, Tint * Style.ForegroundImage.GetTint(InWidgetStyle));
+	}
+
+	return FMath::Max(LayerId, Layer - 1);
 }
 
-FVector2D SHealthBar::ComputeDesiredSize( float ) const
+FVector2D SHealthBar::ComputeDesiredSize(float) const
 {
 	return FVector2D(0.0f, 0.0f);
 }
-
-bool SHealthBar::ComputeVolatility() const
-{
-	return SLeafWidget::ComputeVolatility() || HealthPercent.IsBound() || RecoverableHealthPercent.IsBound() || FillColorAndOpacity.IsBound() || BorderPadding.IsBound();
-}
-
-void SHealthBar::SetActiveTimerTickRate(float TickRate)
-{
-	if (CurrentTickRate != TickRate || !ActiveTimerHandle.IsValid())
-	{
-		CurrentTickRate = TickRate;
-
-		TSharedPtr<FActiveTimerHandle> SharedActiveTimerHandle = ActiveTimerHandle.Pin();
-		if (SharedActiveTimerHandle.IsValid())
-		{
-			UnRegisterActiveTimer(SharedActiveTimerHandle.ToSharedRef());
-		}
-	}
-}
-
-EActiveTimerReturnType SHealthBar::ActiveTick(double InCurrentTime, float InDeltaTime)
-{
-	
-	TOptional<float> PercentFraction = HealthPercent.Get();
-	if (PercentFraction.IsSet() && !Style->EnableFillAnimation)
-	{
-		SetActiveTimerTickRate(MinimumTickRate);
-	}
-	else
-	{
-		SetActiveTimerTickRate(0.0f);
-	}
-
-	Invalidate(EInvalidateWidget::Paint);
-
-	return EActiveTimerReturnType::Continue;
-}
-
-
-

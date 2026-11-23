@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "NSEStyle.h"
 #include "NightSkyBattleWidget.generated.h"
 
 //Nick changes
@@ -137,6 +138,18 @@ public:
 	
 	UFUNCTION(BlueprintImplementableEvent)
 	void PlayAssistAnim(bool bIsP1);
+
+	/** Madrone change: a side's battle HUD style changed (Style null: back to the Blueprint's own look). The game state
+	 * calls it from UpdateHUD, never while resimulating. Subclasses restyle their bars, then call Super. */
+	virtual void ApplyBattleHudStyle(bool bIsP1, const FNSEBattleHudStyle* Style, USlateWidgetStyleAsset* StyleAsset);
+
+	/** Madrone change: for art the Slate style can't do (a boss frame, moving things): StyleAsset is null when the side
+	 * is back to the default look. ThemeId comes from the style. */
+	UFUNCTION(BlueprintImplementableEvent, Category="Style")
+	void OnBattleHudStyleChanged(bool bIsP1, USlateWidgetStyleAsset* StyleAsset, FName ThemeId);
+
+	/** Madrone change: the fighter on screen changed on a side (a tag), also after a rollback undid one. */
+	virtual void OnMainPlayersChanged() {}
 	
 	void PlayStandardAnimations();
 	void SetAnimationRollbackData();

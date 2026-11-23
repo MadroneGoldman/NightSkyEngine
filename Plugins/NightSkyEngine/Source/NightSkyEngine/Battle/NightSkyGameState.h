@@ -376,6 +376,26 @@ public:
 	// Madrone change: training skips the intro, whose end runs the HUD widgets' RoundInitImplementation (teammate health
 	// bars, player names). UpdateHUD runs it once instead, when the widgets have been built. Presentation only.
 	bool bHudRoundInitPending = false;
+
+	/** Madrone change: the battle HUD style when no fighter asks for one (e.g. a boss arena's game state). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="HUD")
+	FNSEHudStyleRequest DefaultHudStyle;
+
+	/** Madrone change: a fight-wide HUD style that wins over every fighter's (a scripted boss fight). Not rollback state;
+	 * clear it when the fight ends (the overworld game state is reused). */
+	UPROPERTY(Transient, BlueprintReadOnly, Category="HUD")
+	FNSEHudStyleRequest HudStyleOverride;
+
+	UFUNCTION(BlueprintCallable, Category="HUD")
+	void SetHudStyleOverride(const FNSEHudStyleRequest& Request) { HudStyleOverride = Request; }
+
+	UFUNCTION(BlueprintCallable, Category="HUD")
+	void ClearHudStyleOverride() { HudStyleOverride = FNSEHudStyleRequest(); }
+
+	/** Madrone change: the HUD style a side shows now (null: the HUD Blueprint's own look). Highest Priority among the
+	 * override, the fighters' requests (CHR_ Battle Hud Style, or an encounter's) and DefaultHudStyle; ties go to player 2. */
+	UFUNCTION(BlueprintCallable, Category="HUD")
+	USlateWidgetStyleAsset* ResolveHudStyle(bool bIsP1);
 	
 	int32 LocalFrame = 0;
 	int32 RemoteFrame = 0;
@@ -491,6 +511,13 @@ public:
 
 	void HUDInit() const;
 	void UpdateHUD();
+	/** Madrone change: applies each side's HUD style when it changed, and tells the HUD when the fighter on screen
+	 * changed. From UpdateHUD: never while resimulating, and right again after a rollback. */
+	void UpdateHudStyles();
+	// What the HUD was last given (presentation only, reset by HUDInit for a new HUD or fight).
+	mutable TWeakObjectPtr<USlateWidgetStyleAsset> AppliedHudStyle[2];
+	mutable bool bHudStyleApplied[2] = {false, false};
+	mutable TWeakObjectPtr<APlayerObject> HudMainPlayer[2];
 	void BattleHudVisibility(bool Visible);
 	
 	void PlayCommonAudio(USoundBase* InSoundWave, float MaxDuration);

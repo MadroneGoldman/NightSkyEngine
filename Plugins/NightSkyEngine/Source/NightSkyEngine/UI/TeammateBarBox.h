@@ -37,6 +37,11 @@ public:
 	
 	UFUNCTION(BlueprintCallable, Category="Health")
 	void AddHealthbars(int NewCount);
+
+	/** Madrone change: a battle HUD style's teammate bar look, for the bars now and the ones AddHealthbars makes later.
+	 * Its fill falls back to Image Fill when it has none. Cleared: Image Fill only (the Blueprint's look). */
+	void SetStyleOverride(const FHealthBarStyle& InStyle);
+	void ClearStyleOverride();
 	
 	//~ Begin UVisual Interface
 	virtual void ReleaseSlateResources(bool bReleaseChildren) override;
@@ -44,6 +49,8 @@ public:
 	
 protected:
 	TArray<TSharedPtr<SHealthBar>> TeammateHealthBars;
-	
-	void MakeDynamicFillImage(TSharedPtr<SHealthBar>& TeammateHealthBar);
+
+	TOptional<FHealthBarStyle> StyleOverride;
+
+	void ApplyStyle(SHealthBar& Bar) const;
 };

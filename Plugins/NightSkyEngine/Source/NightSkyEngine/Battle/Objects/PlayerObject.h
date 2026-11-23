@@ -13,6 +13,7 @@
 #include "NightSkyEngine/Data/SoundData.h"
 #include "NightSkyEngine/Data/StateData.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "NightSkyEngine/UI/NSEStyle.h"
 #include "PlayerObject.generated.h"
 
 class ULinkActorData;
@@ -344,6 +345,11 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	FText CharacterName;
+
+	/** Madrone change: the battle HUD style this fighter asks for (its CHR_ asset's, or an encounter's). Presentation
+	 * only, after PlayerSyncEnd: not rollback state. */
+	UPROPERTY(Transient, BlueprintReadWrite, Category="HUD")
+	FNSEHudStyleRequest HudStyleRequest;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	bool bIsCpu = false;
