@@ -980,6 +980,11 @@ public:
 	/* Madrone change: damage of hits and blocked hits on fighters pinned against this wall object since its owner last took
 	 * it (the wall prop turns it into damage to itself, so nobody stays trapped against it). */
 	int32 WallPressure = 0;
+	/* Madrone change: this object's current move was entered with a simple input (E + direction + button), so its damage
+	 * is reduced (UNightSkyBattleRules). Players set it on every state change; objects copy it from their player when
+	 * created, so a projectile from a simple-input special deals the reduced damage too. */
+	UPROPERTY(BlueprintReadOnly)
+	bool bSimpleInput = false;
 
 	// Anything past here isn't saved or loaded for rollback, unless it has the SaveGame tag.
 	uint32 ObjSyncEnd = 0;

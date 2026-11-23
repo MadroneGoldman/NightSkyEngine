@@ -325,10 +325,14 @@ protected:
 	FGameplayTag LastStateName;
 	FGameplayTag ExeStateName;
 	FGameplayTag BufferedStateName;
+	/** Madrone change: BufferedStateName when it was buffered through a simple input list (else empty). */
+	FGameplayTag BufferedSimpleStateName;
 
 public:
 	// Anything past here isn't saved or loaded for rollback, unless it has the SaveGame tag.
 	uint32 PlayerSyncEnd;
+	/** Madrone change: set only while a state is being entered through a simple input list (read by OnStateChange). */
+	bool bEnteringSimpleInput = false;
 
 protected:
 	/** Madrone change: feet using leg IK in the live retarget (bit 0 left, bit 1 right). Set from each state's FootIK on
@@ -508,7 +512,7 @@ public:
 	// handle input conditions for state transition
 	bool HandleStateInputs(int32 StateIndex, bool Buffer, FStateMachine& StateMachine);
 	// handle state transition
-	bool HandleStateTransition(int32 StateIndex, bool Buffer, FStateMachine& StateMachine);
+	bool HandleStateTransition(int32 StateIndex, bool Buffer, FStateMachine& StateMachine, bool bSimple = false);
 	//buffer state
 	void HandleBufferedState();
 	void HandleBufferedState(FStateMachine& StateMachine);

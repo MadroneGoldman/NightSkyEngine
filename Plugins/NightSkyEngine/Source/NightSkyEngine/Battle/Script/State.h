@@ -293,6 +293,13 @@ struct FInputConditionList
 	
 	UPROPERTY(EditAnywhere)
 	TArray<FInputCondition> InputConditions;
+
+	/**
+	 * Madrone change: this list is the simple input (E + a direction + a button) for a move that also has a motion input.
+	 * A move entered through it deals less damage (Project Settings > Night Sky Engine > Battle Rules).
+	 */
+	UPROPERTY(EditAnywhere)
+	bool bSimpleInput = false;
 };
 
 /**
@@ -394,6 +401,15 @@ public:
 	 */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	FGameplayTag Name;
+	/**
+	 * Madrone change: the move's name for players (move lists, the move wiki, training). Presentation only: never read it
+	 * in gameplay. It lives on the state, which rollback doesn't save, so it costs nothing online.
+	 */
+	UPROPERTY(BlueprintReadOnly, EditAnywhere, Category = "Display")
+	FText DisplayName;
+	/** DisplayName, or one made from the state's tag when it has none (Manny.Fireball.A -> "Fireball A"). */
+	UFUNCTION(BlueprintPure, Category = "Display")
+	FText GetDisplayName() const;
 	/**
 	 * The state name to share a max chain with.
 	 */

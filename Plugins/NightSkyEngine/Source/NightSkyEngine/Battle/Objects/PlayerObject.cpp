@@ -2,6 +2,7 @@
 
 
 #include "PlayerObject.h"
+#include "NightSkyEngine/Miscellaneous/NightSkyBattleRules.h"
 
 #include "NightSkyEngine/Battle/NightSkyGameState.h"
 #include "NightSkyEngine/Battle/Actors/LinkActor.h"
@@ -346,7 +347,7 @@ bool APlayerObject::HandleStateInputs(int32 StateIndex, bool Buffer, FStateMachi
 			}
 			if (v == List.InputConditions.Num() - 1) //have all conditions been met?
 			{
-				return HandleStateTransition(StateIndex, Buffer, StateMachine);
+				return HandleStateTransition(StateIndex, Buffer, StateMachine, List.bSimpleInput);
 			}
 		}
 		if (List.InputConditions.Num() == 0) //if no input conditions, set state
@@ -357,8 +358,15 @@ bool APlayerObject::HandleStateInputs(int32 StateIndex, bool Buffer, FStateMachi
 	return false;
 }
 
-bool APlayerObject::HandleStateTransition(int32 StateIndex, bool Buffer, FStateMachine& StateMachine)
+bool APlayerObject::HandleStateTransition(int32 StateIndex, bool Buffer, FStateMachine& StateMachine, bool bSimple)
 {
+	// Madrone change: remember whether the state comes from a simple input (damage reduction), through the buffer too.
+	struct FSimpleScope
+	{
+		bool& Flag;
+		FSimpleScope(bool& InFlag, const bool bValue) : Flag(InFlag) { Flag = bValue; }
+		~FSimpleScope() { Flag = false; }
+	} SimpleScope(bEnteringSimpleInput, bSimple);
 	if (FindChainCancelOption(StateMachine.States[StateIndex]->Name, StateMachine)
 		|| FindAutoComboCancelOption(StateMachine.States[StateIndex]->Name, StateMachine)
 		|| FindWhiffCancelOption(StateMachine.States[StateIndex]->Name, StateMachine)
@@ -368,6 +376,7 @@ bool APlayerObject::HandleStateTransition(int32 StateIndex, bool Buffer, FStateM
 		if (Buffer)
 		{
 			BufferedStateName = StateMachine.States[StateIndex]->Name;
+			BufferedSimpleStateName = bSimple ? BufferedStateName : FGameplayTag::EmptyTag;
 			return true; //don't try to enter another state
 		}
 		if (StateMachine.ForceSetState(StateMachine.States[StateIndex]->Name)) //if state set successful...
@@ -395,6 +404,7 @@ bool APlayerObject::HandleStateTransition(int32 StateIndex, bool Buffer, FStateM
 		if (Buffer)
 		{
 			BufferedStateName = StateMachine.States[StateIndex]->Name;
+			BufferedSimpleStateName = bSimple ? BufferedStateName : FGameplayTag::EmptyTag;
 			return true; //don't try to enter another state
 		}
 		if (StateMachine.SetState(StateMachine.States[StateIndex]->Name)) //if state set successful...
@@ -2066,8 +2076,13 @@ void APlayerObject::HandleBufferedState(FStateMachine& StateMachine)
 {
 	if (BufferedStateName != FGameplayTag::EmptyTag)
 	{
-		if (StateMachine.ForceSetState(BufferedStateName))
+		// Madrone change: a buffered simple-input move keeps its reduced damage (hit reactions buffer other states)
+		bEnteringSimpleInput = BufferedSimpleStateName.IsValid() && BufferedSimpleStateName == BufferedStateName;
+		const bool bEntered = StateMachine.ForceSetState(BufferedStateName);
+		bEnteringSimpleInput = false;
+		if (bEntered)
 		{
+			BufferedSimpleStateName = FGameplayTag::EmptyTag;
 			BufferedStateName = FGameplayTag::EmptyTag;
 			GotoLabelActive = false;
 			switch (StateMachine.CurrentState->EntryStance)
@@ -2919,6 +2934,8 @@ bool APlayerObject::CheckStateEnabled(EStateType StateType, FGameplayTag CustomS
 
 void APlayerObject::OnStateChange()
 {
+	// Madrone change: every primary state change decides whether the new move counts as a simple input
+	bSimpleInput = bEnteringSimpleInput;
 	if (!GameState) return;
 
 	CallSubroutine(Subroutine_Cmn_OnStateChange);

@@ -1587,6 +1587,8 @@ ABattleObject* ANightSkyGameState::AddBattleObject(
 			Objects[i]->bIsCommonState = bIsCommonState;
 			Objects[i]->bIsNeutral = bIsNeutral;
 			Objects[i]->InitObject();
+			// Madrone change: a projectile from a simple-input move deals the reduced damage too
+			Objects[i]->bSimpleInput = Parent && Parent->bSimpleInput;
 			return Objects[i];
 		}
 	}

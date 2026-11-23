@@ -2,6 +2,7 @@
 
 
 #include "BattleObject.h"
+#include "NightSkyEngine/Miscellaneous/NightSkyBattleRules.h"
 #include "Misc/ScopeExit.h"
 #include "NiagaraComponent.h"
 #include "NiagaraFunctionLibrary.h"
@@ -722,7 +723,8 @@ void ABattleObject::HandleHitCollision(ABattleObject* AttackedObj)
 					TriggerEvent(EVT_BlockMainPlayer, StateMachine_Primary);
 				}
 
-				const int32 ChipDamage = NormalHit.Damage * HitCommon.ChipDamagePercent / 100;
+				int32 ChipDamage = NormalHit.Damage * HitCommon.ChipDamagePercent / 100;
+				if (bSimpleInput) ChipDamage = UNightSkyBattleRules::ScaleSimpleInputDamage(ChipDamage); // Madrone change
 				AttackedPlayer->CurrentHealth -= ChipDamage;
 
 				const FHitData Data = InitHitDataByAttackLevel(false);
@@ -773,8 +775,9 @@ void ABattleObject::HandleHitCollision(ABattleObject* AttackedObj)
 					{
 						if (AttackedPlayer->SuperArmorData.bArmorTakeChipDamage)
 						{
-							const int32 ChipDamage = NormalHit.Damage * HitCommon.ChipDamagePercent /
+							int32 ChipDamage = NormalHit.Damage * HitCommon.ChipDamagePercent /
 								100;
+							if (bSimpleInput) ChipDamage = UNightSkyBattleRules::ScaleSimpleInputDamage(ChipDamage); // Madrone change
 							AttackedPlayer->CurrentHealth -= ChipDamage;
 							AttackedPlayer->AddMeter(
 								NormalHit.Damage * AttackedPlayer->MeterPercentOnReceiveHitGuard / 100);
@@ -782,8 +785,9 @@ void ABattleObject::HandleHitCollision(ABattleObject* AttackedObj)
 						}
 						if (AttackedPlayer->SuperArmorData.ArmorDamagePercent)
 						{
-							const int32 ArmorDamage = NormalHit.Damage * AttackedPlayer->SuperArmorData.
+							int32 ArmorDamage = NormalHit.Damage * AttackedPlayer->SuperArmorData.
 								ArmorDamagePercent / 100;
+							if (bSimpleInput) ArmorDamage = UNightSkyBattleRules::ScaleSimpleInputDamage(ArmorDamage); // Madrone change
 							AttackedPlayer->CurrentHealth -= ArmorDamage;
 							AttackedPlayer->AddMeter(
 								NormalHit.Damage * AttackedPlayer->MeterPercentOnReceiveHit *
@@ -1492,6 +1496,11 @@ FHitData ABattleObject::InitHitDataByAttackLevel(bool IsCounter)
 		Data = NormalHit;
 	else
 		Data = CounterHit;
+
+	// Madrone change: a move entered with a simple input deals less damage. Baked into the hit here, when it lands: the
+	// victim applies it later (after hitstop), when a projectile may already be gone and its flag reset.
+	if (bSimpleInput && Data.Damage != INT_MAX)
+		Data.Damage = UNightSkyBattleRules::ScaleSimpleInputDamage(Data.Damage);
 
 	return Data;
 }
@@ -3880,8 +3889,12 @@ ABattleObject* ABattleObject::AddCommonBattleObject(FGameplayTag InStateName, in
 		if (Direction == DIR_Left) PosXOffset *= -1;
 		FinalPosX += PosXOffset;
 		FinalPosY += PosYOffset;
-		return GameState->AddBattleObject(Player->CommonObjectStates[StateIndex],
+		ABattleObject* Spawned = GameState->AddBattleObject(Player->CommonObjectStates[StateIndex],
 		                                  FinalPosX, FinalPosY, Direction, StateIndex, true, Player);
+		// Madrone change: the new object deals reduced damage if whatever made it did (a fireball's explosion keeps the
+		// simple-input reduction after its player has gone back to standing).
+		if (Spawned) Spawned->bSimpleInput = bSimpleInput;
+		return Spawned;
 	}
 	return nullptr;
 }
@@ -3899,8 +3912,12 @@ ABattleObject* ABattleObject::AddBattleObject(FGameplayTag InStateName, int32 Po
 		if (Direction == DIR_Left) PosXOffset *= -1;
 		FinalPosX += PosXOffset;
 		FinalPosY += PosYOffset;
-		return GameState->AddBattleObject(Player->ObjectStates[StateIndex],
+		ABattleObject* Spawned = GameState->AddBattleObject(Player->ObjectStates[StateIndex],
 		                                  FinalPosX, FinalPosY, Direction, StateIndex, false, Player, bIsNeutral_);
+		// Madrone change: the new object deals reduced damage if whatever made it did (a fireball's explosion keeps the
+		// simple-input reduction after its player has gone back to standing).
+		if (Spawned) Spawned->bSimpleInput = bSimpleInput;
+		return Spawned;
 	}
 	return nullptr;
 }
