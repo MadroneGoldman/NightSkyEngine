@@ -480,9 +480,9 @@ void ANightSkyGameState::MatchInit()
 
 	BattleState.RandomManager = GameInstance->BattleData.Random;
 	BattleState.TeamData[0].TeamCount = GameInstance->BattleData.PlayerListP1.Num();
-	BattleState.TeamData[0].CooldownTimer.AddDefaulted(GameInstance->BattleData.PlayerListP1.Num());
+	BattleState.TeamData[0].CooldownTimer.Init(0, GameInstance->BattleData.PlayerListP1.Num()); // Madrone change: was appended to every match
 	BattleState.TeamData[1].TeamCount = GameInstance->BattleData.PlayerListP2.Num();
-	BattleState.TeamData[1].CooldownTimer.AddDefaulted(GameInstance->BattleData.PlayerListP2.Num());
+	BattleState.TeamData[1].CooldownTimer.Init(0, GameInstance->BattleData.PlayerListP2.Num());
 	BattleState.GaugeP1.Empty();
 	BattleState.GaugeP2.Empty();
 	BattleState.GaugeP1.AddDefaulted(BattleState.MaxGauge.Num());
@@ -556,8 +556,9 @@ void ANightSkyGameState::MatchInitWt(int Team1Count, int Team2Count) //Madrone c
 	
 	BattleState.TeamData[0].TeamCount = Team1Count;
 	BattleState.TeamData[1].TeamCount = Team2Count;
-	BattleState.TeamData[0].CooldownTimer.AddDefaulted(BattleState.TeamData[0].TeamCount);
-	BattleState.TeamData[1].CooldownTimer.AddDefaulted(BattleState.TeamData[1].TeamCount);
+	// Madrone change: reset, not appended to: the overworld game state is reused, so it kept the last fights' timers.
+	BattleState.TeamData[0].CooldownTimer.Init(0, BattleState.TeamData[0].TeamCount);
+	BattleState.TeamData[1].CooldownTimer.Init(0, BattleState.TeamData[1].TeamCount);
 	BattleState.GaugeP1.Empty();
 	BattleState.GaugeP2.Empty();
 	BattleState.GaugeP1.AddDefaulted(BattleState.MaxGauge.Num());
@@ -1899,11 +1900,12 @@ void ANightSkyGameState::UpdateHUD()
 	{
 		if (BattleHudActor->TopWidget != nullptr)
 		{
-			//Madrone change
-			if (BattleHudActor->TopWidget->P1Cooldowns.IsEmpty())
+			//Madrone change: sized to the teams every time they change, not only when empty. The overworld HUD lives on
+			// between fights, so a tag fight after a 1v1 indexed past the end (crash entering the battle).
+			if (BattleHudActor->TopWidget->P1Cooldowns.Num() != BattleState.TeamData[0].TeamCount)
 				BattleHudActor->TopWidget->P1Cooldowns.SetNum(
 					BattleState.TeamData[0].TeamCount);
-			if (BattleHudActor->TopWidget->P2Cooldowns.IsEmpty())
+			if (BattleHudActor->TopWidget->P2Cooldowns.Num() != BattleState.TeamData[1].TeamCount)
 				BattleHudActor->TopWidget->P2Cooldowns.SetNum(
 					BattleState.TeamData[1].TeamCount);
 			
