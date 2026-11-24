@@ -81,6 +81,11 @@ public:
 	TArray<float> P1Cooldowns;
 	UPROPERTY(BlueprintReadOnly)
 	TArray<float> P2Cooldowns;
+	/** Madrone change: frames until each side's dedicated assist (P1Assist / P2Assist) can be called again. */
+	UPROPERTY(BlueprintReadOnly)
+	float P1AssistCooldown = 0;
+	UPROPERTY(BlueprintReadOnly)
+	float P2AssistCooldown = 0;
 	
 	UPROPERTY(BlueprintReadWrite, SaveGame)
 	TArray<FRollbackAnimation> WidgetAnimationRollback;

@@ -346,6 +346,11 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	FText CharacterName;
 
+	/** Madrone change: the character data this fighter was spawned from (HUD portraits), when its spawner sets it.
+	 * Presentation only, not rollback state. */
+	UPROPERTY(Transient, BlueprintReadWrite, Category="HUD")
+	TObjectPtr<class UPrimaryCharaData> CharaData;
+
 	/** Madrone change: the battle HUD style this fighter asks for (its CHR_ asset's, or an encounter's). Presentation
 	 * only, after PlayerSyncEnd: not rollback state. */
 	UPROPERTY(Transient, BlueprintReadWrite, Category="HUD")
@@ -475,6 +480,8 @@ public:
 
 private:
 	virtual void BeginPlay() override;
+	/** Madrone change: destroys this fighter's link actors (spawned per fighter in BeginPlay; they outlived it). */
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	void HandleLanding();
 	//check state conditions

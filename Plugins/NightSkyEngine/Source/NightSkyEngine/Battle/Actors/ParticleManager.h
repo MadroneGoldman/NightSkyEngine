@@ -50,5 +50,8 @@ public:
 	virtual void Tick(float DeltaTime) override;
 	void UpdateParticles();
 	void PauseParticles();
+	/** Madrone change: destroys every battle particle. Only UpdateParticles ages them (desired age mode), so whatever was
+	 * alive when a battle ended stayed frozen in the world. */
+	void ClearParticles();
 	void RollbackParticles(int RollbackFrames);
 };

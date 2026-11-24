@@ -144,6 +144,7 @@ void ANightSkyGameState::Init()
 			// Madrone change: the HUD shows CharacterName; only assists were given theirs
 			SpawnedPlayer->CharacterName = Player->CharaFriendlyName.IsEmpty() ? FText::FromName(Player->CharaName) : Player->CharaFriendlyName;
 			SpawnedPlayer->HudStyleRequest = Player->BattleHudStyle; // Madrone change
+			SpawnedPlayer->CharaData = Player.Get(); // Madrone change
 			SpawnedPlayer->ColorIndex = 1;
 			if (GameInstance->BattleData.ColorIndicesP1.Num() > i)
 				SpawnedPlayer->ColorIndex = GameInstance->BattleData.ColorIndicesP1[i];
@@ -171,6 +172,7 @@ void ANightSkyGameState::Init()
 			// Madrone change: the HUD shows CharacterName; only assists were given theirs
 			SpawnedPlayer->CharacterName = Player->CharaFriendlyName.IsEmpty() ? FText::FromName(Player->CharaName) : Player->CharaFriendlyName;
 			SpawnedPlayer->HudStyleRequest = Player->BattleHudStyle; // Madrone change
+			SpawnedPlayer->CharaData = Player.Get(); // Madrone change
 			SpawnedPlayer->ColorIndex = 1;
 			if (GameInstance->BattleData.ColorIndicesP2.Num() > i)
 				SpawnedPlayer->ColorIndex = GameInstance->BattleData.ColorIndicesP2[i];
@@ -218,6 +220,7 @@ void ANightSkyGameState::Init()
 			APlayerObject* NewP1Assist = GetWorld()->SpawnActor<APlayerObject>(P1AssistData->PlayerClass); 
 			NewP1Assist->CharacterName = P1AssistData->CharaFriendlyName; 
 			NewP1Assist->HudStyleRequest = P1AssistData->BattleHudStyle; // Madrone change
+			NewP1Assist->CharaData = P1AssistData; // Madrone change
 			NewP1Assist->SetActorHiddenInGame(true);
 		
 			P1Assist = NewP1Assist;
@@ -233,9 +236,11 @@ void ANightSkyGameState::Init()
 			APlayerObject* NewP2Assist = GetWorld()->SpawnActor<APlayerObject>(P2AssistData->PlayerClass); 
 			NewP2Assist->CharacterName = P2AssistData->CharaFriendlyName; 
 			NewP2Assist->HudStyleRequest = P2AssistData->BattleHudStyle; // Madrone change
+			NewP2Assist->CharaData = P2AssistData; // Madrone change
 			NewP2Assist->SetActorHiddenInGame(true);
 		
 			P2Assist = NewP2Assist;
+			NewP2Assist->PlayerIndex = 1; // Madrone change: MatchInit only sets it for Players; 0 made it count as P1's side
 			NewP2Assist->SetActorTransform(BattleSceneTransform);
 			SortedObjects.Add(NewP2Assist);
 			NewP2Assist->InitPlayer();
@@ -283,6 +288,18 @@ void ANightSkyGameState::PlayIntros()
 	BattleHudVisibility(false);
 }
 
+// Madrone change: an assist still out when the round ended went into the next one active and on screen
+void ANightSkyGameState::ResetAssistsForRound()
+{
+	for (APlayerObject* Assist : {P1Assist.Get(), P2Assist.Get()})
+	{
+		if (!IsValid(Assist)) continue;
+		Assist->RoundInit(true);
+		Assist->SetOnScreen(false);
+		Assist->IsActive = false;
+	}
+}
+
 void ANightSkyGameState::RoundInit()
 {
 	BattleState.PauseTimer = false;
@@ -311,14 +328,17 @@ void ANightSkyGameState::RoundInit()
 			if (!Player->IsMainPlayer()) Player->SetOnScreen(false);
 		}
 
+		ResetAssistsForRound(); // Madrone change
 		GetMainPlayer(true)->JumpToStatePrimary(State_Universal_Stand);
 		GetMainPlayer(false)->JumpToStatePrimary(State_Universal_Stand);
 
-		Players[0]->PlayerFlags |= PLF_IsOnScreen;
-		Players[BattleState.TeamData[0].TeamCount]->PlayerFlags |= PLF_IsOnScreen;
+		// Madrone change: the main players, not the ones the match started with: after a tag in round 1, round 2 put the
+		// first fighter back on screen next to the one in control (and its partner then counted as on screen, so no tag).
+		GetMainPlayer(true)->PlayerFlags |= PLF_IsOnScreen;
+		GetMainPlayer(false)->PlayerFlags |= PLF_IsOnScreen;
 
-		BattleState.MaxMeter[0] = Players[0]->MaxMeter;
-		BattleState.MaxMeter[1] = Players[BattleState.TeamData[0].TeamCount]->MaxMeter;
+		BattleState.MaxMeter[0] = GetMainPlayer(true)->MaxMeter;
+		BattleState.MaxMeter[1] = GetMainPlayer(false)->MaxMeter;
 
 		BattleState.RoundTimer = GameInstance->BattleData.StartRoundTimer * 60;
 		BattleState.bHUDVisible = true;
@@ -368,6 +388,7 @@ void ANightSkyGameState::RoundInit()
 			if (!Player->IsMainPlayer()) Player->SetOnScreen(false);
 		}
 
+		ResetAssistsForRound(); // Madrone change
 		GetMainPlayer(true)->JumpToStatePrimary(State_Universal_Stand);
 		GetMainPlayer(false)->JumpToStatePrimary(State_Universal_Stand);
 
@@ -404,6 +425,7 @@ void ANightSkyGameState::RoundInit()
 			if (!Player->IsMainPlayer()) Player->SetOnScreen(false);
 		}
 
+		ResetAssistsForRound(); // Madrone change
 		GetMainPlayer(true)->JumpToStatePrimary(State_Universal_Stand);
 		GetMainPlayer(false)->JumpToStatePrimary(State_Universal_Stand);
 
@@ -703,6 +725,12 @@ void ANightSkyGameState::UpdateGameState(int32 Input1, int32 Input2, bool bShoul
 				if (Cooldown == 0) continue;
 				if (GameInstance->IsTraining && !GetMainPlayer(i == 0)->ComboCounter) Cooldown = 0;
 				else Cooldown--;
+			}
+			// Madrone change: the dedicated assist's cooldown, same rules
+			if (int32& AssistCooldown = BattleState.AssistCooldownTimer[i]; AssistCooldown > 0)
+			{
+				if (GameInstance->IsTraining && !GetMainPlayer(i == 0)->ComboCounter) AssistCooldown = 0;
+				else AssistCooldown--;
 			}
 		}
 	}
@@ -1416,7 +1444,7 @@ int32 ANightSkyGameState::CreateChecksum()
 {
 	Checksum = 0;
 
-	for (const auto Player : Players)
+	for (const auto Player : GetRollbackPlayers()) // Madrone change: with the assists
 	{
 		Checksum += Player->ActionTime ^ Player->ActionTime << 16;
 		Checksum += Player->PosX ^ Player->PosX << 16;
@@ -1917,6 +1945,8 @@ void ANightSkyGameState::UpdateHUD()
 				BattleHudActor->TopWidget->P2Cooldowns.SetNum(
 					BattleState.TeamData[1].TeamCount);
 			
+			BattleHudActor->TopWidget->P1AssistCooldown = BattleState.AssistCooldownTimer[0]; // Madrone change
+			BattleHudActor->TopWidget->P2AssistCooldown = BattleState.AssistCooldownTimer[1];
 			for (int i = 0; i < BattleState.TeamData[0].TeamCount; i++)
 			{
 				//Tag cooldown timers
@@ -2085,9 +2115,20 @@ APlayerObject* ANightSkyGameState::SwitchMainPlayer(APlayerObject* InPlayer, con
 	NewPlayer->JumpToStatePrimary(State_Universal_TagIn);
 	if (!(NewPlayer->PlayerFlags & PLF_IsOnScreen))
 	{
-		NewPlayer->PosX = InPlayer->PosX;
+		// Madrone change: comes in from the edge of the screen behind the fighter leaving (was: on top of it), facing the
+		// same way; the tag in state carries it forward.
+		// The side away from the opponent (not the leaving fighter's facing: it can face away after a cross-up).
+		const FScreenData& Screen = BattleState.ScreenData;
+		const APlayerObject* Opponent = GetMainPlayer(!IsP1);
+		const bool bFromLeft = Opponent && Opponent->PosX != InPlayer->PosX ? InPlayer->PosX < Opponent->PosX : InPlayer->Direction == DIR_Right;
+		NewPlayer->PosX = bFromLeft ? Screen.ScreenBoundsLeft * 1000 : Screen.ScreenBoundsRight * 1000;
 		NewPlayer->PosY = InPlayer->PosY;
 		NewPlayer->Direction = InPlayer->Direction;
+	}
+	// Madrone change: the one who left can't be tagged back in for TagCooldown frames (nothing set a tag cooldown before)
+	{
+		int32& Cooldown = BattleState.TeamData[IsP1 == false].CooldownTimer[TeamIndex];
+		Cooldown = FMath::Max(Cooldown, BattleState.TagCooldown);
 	}
 	NewPlayer->SetOnScreen(true);
 	NewPlayer->CalculatePushbox();
@@ -2098,6 +2139,8 @@ APlayerObject* ANightSkyGameState::SwitchMainPlayer(APlayerObject* InPlayer, con
 	{
 		EnemyPlayer->Enemy = NewPlayer;
 	}
+	// Madrone change: and the other side's dedicated assist, which kept targeting the fighter who tagged out
+	if (APlayerObject* EnemyAssist = IsP1 ? P2Assist.Get() : P1Assist.Get(); IsValid(EnemyAssist)) EnemyAssist->Enemy = NewPlayer;
 	BattleState.MainPlayer[!IsP1] = NewPlayer;
 	SetDrawPriorityFront(NewPlayer);
 	BattleHudActor->TopWidget->PlayTagAnim(IsP1);
@@ -2108,7 +2151,9 @@ APlayerObject* ANightSkyGameState::SwitchMainPlayer(APlayerObject* InPlayer, con
 APlayerObject* ANightSkyGameState::CallAssist(const bool IsP1, const int AssistIndex, const FGameplayTag AssistName)
 {
 	APlayerObject* NewPlayer;
-	if (BattleState.BattleFormat == EBattleFormat::NickTour)
+	// Madrone change: index 0 calls the side's dedicated assist (P1Assist / P2Assist, outside the team: WT battles) in
+	// every format, not only NickTour; it has its own cooldown.
+	if (BattleState.BattleFormat == EBattleFormat::NickTour || (AssistIndex == 0 && (IsP1 ? P1Assist : P2Assist) != nullptr))
 	{
 		if (IsP1)
 		{
@@ -2119,6 +2164,7 @@ APlayerObject* ANightSkyGameState::CallAssist(const bool IsP1, const int AssistI
 			NewPlayer = P2Assist;	
 		}
 		if (NewPlayer == nullptr) return nullptr;
+		if (BattleState.AssistCooldownTimer[IsP1 ? 0 : 1] > 0) return nullptr;
 	}
 	else
 	{
@@ -2616,31 +2662,33 @@ void ANightSkyGameState::SaveGameState(TArray<uint8>& RollbackBuffer, int32* InC
 		}
 	}
 
-	for (int i = 0; i < Players.Num(); i++)
+	// Madrone change: the dedicated assists too (they're not in Players): their state, position and IsActive were never
+	// restored, so after a rollback an assist kept a later frame's state while the battle state (its cooldown) went back.
+	for (APlayerObject* Player : GetRollbackPlayers())
 	{
 		{
 			TArray<uint8> ObjBuffer;
 			ObjBuffer.AddUninitialized(SizeOfBattleObject);
-			Players[i]->SaveForRollback(ObjBuffer.GetData());
+			Player->SaveForRollback(ObjBuffer.GetData());
 			RollbackBuffer.Append(ObjBuffer);
 		}
 		
 		{
 			TArray<uint8> CharBuffer;
 			CharBuffer.AddUninitialized(SizeOfPlayerObject);
-			Players[i]->SaveForRollbackPlayer(CharBuffer.GetData());
+			Player->SaveForRollbackPlayer(CharBuffer.GetData());
 			RollbackBuffer.Append(CharBuffer);
 		}
 		
 		{
 			TArray<uint8> CharBPBuffer;
-			Players[i]->SaveForRollbackBP(CharBPBuffer);
+			Player->SaveForRollbackBP(CharBPBuffer);
 			RollbackBuffer.Append(CharBPBuffer);
 		}
 		
 		{
 			TArray<uint8> StateBuffer;
-			Players[i]->PrimaryStateMachine.CurrentState->SaveForRollback(StateBuffer);
+			Player->PrimaryStateMachine.CurrentState->SaveForRollback(StateBuffer);
 			RollbackBuffer.Append(StateBuffer);
 		}
 	}
@@ -2697,14 +2745,14 @@ void ANightSkyGameState::LoadGameState(const TArray<uint8>& RollbackBuffer)
 				Objects[i]->ResetObject();
 		}
 	}
-	for (int i = 0; i < Players.Num(); i++)
+	for (APlayerObject* Player : GetRollbackPlayers()) // Madrone change: with the assists
 	{
-		Players[i]->LoadForRollback(GetRollbackBufferView(DataIdx).GetData());
+		Player->LoadForRollback(GetRollbackBufferView(DataIdx).GetData());
 		DataIdx += SizeOfBattleObject;
-		Players[i]->LoadForRollbackPlayer(GetRollbackBufferView(DataIdx).GetData());
+		Player->LoadForRollbackPlayer(GetRollbackBufferView(DataIdx).GetData());
 		DataIdx += SizeOfPlayerObject;
-		DataIdx += Players[i]->LoadForRollbackBP(GetRollbackBufferView(DataIdx));
-		DataIdx += Players[i]->PrimaryStateMachine.CurrentState->LoadForRollback(GetRollbackBufferView(DataIdx));
+		DataIdx += Player->LoadForRollbackBP(GetRollbackBufferView(DataIdx));
+		DataIdx += Player->PrimaryStateMachine.CurrentState->LoadForRollback(GetRollbackBufferView(DataIdx));
 	}
 	
 	SortObjects();
@@ -2720,6 +2768,18 @@ void ANightSkyGameState::LoadGameState(const TArray<uint8>& RollbackBuffer)
 
 	if (!FighterRunner->IsA(AFighterSynctestRunner::StaticClass()))
 		GameInstance->RollbackReplay(CurrentFrame - BattleState.FrameNumber);
+}
+
+TArray<APlayerObject*, TInlineAllocator<8>> ANightSkyGameState::GetRollbackPlayers() const
+{
+	TArray<APlayerObject*, TInlineAllocator<8>> Result(Players);
+	// The assists are set once per battle (Init) and only cleared after it, so the list (and the rollback buffer's
+	// layout) doesn't change during one. Their actors live until the overworld destroys them after the battle.
+	for (APlayerObject* Assist : {P1Assist.Get(), P2Assist.Get()})
+	{
+		if (Assist && !Result.Contains(Assist)) Result.Add(Assist);
+	}
+	return Result;
 }
 
 void ANightSkyGameState::SaveForRollback(TArray<uint8>& Data)

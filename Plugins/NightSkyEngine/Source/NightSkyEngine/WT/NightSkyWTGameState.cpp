@@ -43,8 +43,10 @@ void ANightSkyWTGameState::BeginPlay()
 	SequenceActor = GetWorld()->SpawnActor<ALevelSequenceActor>(ALevelSequenceActor::StaticClass());
 }
 
-void ANightSkyWTGameState::Init(APlayerObject* P1, APlayerObject* P2,APlayerObject* P1_TagTeammate, APlayerObject* P1_AssistTeammate, TArray<APlayerObject*> P2Allies)
+void ANightSkyWTGameState::Init(APlayerObject* P1, APlayerObject* P2,APlayerObject* P1_TagTeammate, APlayerObject* P1_AssistTeammate, TArray<APlayerObject*> P2Allies, APlayerObject* P2_AssistTeammate)
 {
+	P1Assist = nullptr; // Madrone change: the game state is reused for every overworld battle
+	P2Assist = nullptr;
 	bIsBattling = true;
 
 	if (IsValid(BattleExtensionData))
@@ -83,10 +85,12 @@ void ANightSkyWTGameState::Init(APlayerObject* P1, APlayerObject* P2,APlayerObje
 		{
 			P1Assist = P1_AssistTeammate;
 			P1_AssistTeammate->SetActorTransform(BattleSceneTransform);
-			SortedObjects.Add(P1_AssistTeammate);
 			P1_AssistTeammate->InitPlayer();
 			P1_AssistTeammate->GameState = this;
 			P1_AssistTeammate->AddTickPrerequisiteActor(this);
+			// Madrone change: off screen until called, like NSE's own Init (it was drawn with live boxes at round start)
+			P1_AssistTeammate->SetActorHiddenInGame(true);
+			P1_AssistTeammate->IsActive = false;
 		}
 	}
 	{
@@ -102,6 +106,18 @@ void ANightSkyWTGameState::Init(APlayerObject* P1, APlayerObject* P2,APlayerObje
 		P2->GameState = this;
 		P2->AddTickPrerequisiteActor(this);
 
+		// Madrone change: the opponent's dedicated assist, like P1's (CallAssist index 0)
+		if (P2_AssistTeammate != nullptr)
+		{
+			P2Assist = P2_AssistTeammate;
+			P2_AssistTeammate->SetActorTransform(BattleSceneTransform);
+			P2_AssistTeammate->InitPlayer();
+			P2_AssistTeammate->GameState = this;
+			P2_AssistTeammate->PlayerIndex = 1;
+			P2_AssistTeammate->AddTickPrerequisiteActor(this);
+			P2_AssistTeammate->SetActorHiddenInGame(true);
+			P2_AssistTeammate->IsActive = false;
+		}
 		if ( !P2Allies.IsEmpty() )
 		{
 			for (auto P2Ally : P2Allies)
@@ -120,6 +136,9 @@ void ANightSkyWTGameState::Init(APlayerObject* P1, APlayerObject* P2,APlayerObje
 			}
 		}
 	}
+	// Madrone change: the assists after every team member (SortObjects keeps the first Players.Num() entries as players)
+	if (P1Assist) SortedObjects.Add(P1Assist);
+	if (P2Assist) SortedObjects.Add(P2Assist);
 
 	for (int i = 0; i < MaxBattleObjects; i++)
 	{
@@ -128,7 +147,9 @@ void ANightSkyWTGameState::Init(APlayerObject* P1, APlayerObject* P2,APlayerObje
 		Objects[i]->AddTickPrerequisiteActor(this);
 		SortedObjects.Add(Objects.Last());
 	}
-	
+	// Madrone change: as NSE's own Init, so SortObjects keeps spawn order (deterministic after a rollback load)
+	ObjectSpawnOrder = SortedObjects;
+
 	UpdateCamera();
 	
 	OnBattleStartDelegate.Broadcast();
@@ -377,6 +398,8 @@ void ANightSkyWTGameState::Tick(float DeltaTime)
 	{
 		bIsBattling = false;
 		bIsMatchEnd = false;
+		// Madrone change: battle particles aren't aged after this (desired age mode): they would freeze in the overworld.
+		if (IsValid(ParticleManager)) ParticleManager->ClearParticles();
 		// Init spawns MaxBattleObjects pooled objects for every battle; destroy them, or every WT battle leaks them.
 		for (ABattleObject* Object : Objects)
 		{
@@ -385,6 +408,10 @@ void ANightSkyWTGameState::Tick(float DeltaTime)
 		Objects.Empty();
 		Players.Empty();
 		SortedObjects.Empty();
+		ObjectSpawnOrder.Empty(); // Madrone change
+		// Madrone change: pointers to fighters the overworld destroys after the battle (the HUD reads them)
+		P1Assist = nullptr;
+		P2Assist = nullptr;
 		OnBattleEndDelegate.Broadcast();
 	}
 }

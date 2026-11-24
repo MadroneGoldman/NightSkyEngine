@@ -57,6 +57,17 @@ void AParticleManager::UpdateParticles()
 	}
 }
 
+void AParticleManager::ClearParticles()
+{
+	for (const FBattleParticle& Particle : BattleParticles)
+	{
+		if (!IsValid(Particle.NiagaraComponent)) continue;
+		Particle.NiagaraComponent->Deactivate();
+		Particle.NiagaraComponent->DestroyComponent();
+	}
+	BattleParticles.Empty();
+}
+
 void AParticleManager::PauseParticles()
 {
 	BattleParticles.RemoveAll([=](const FBattleParticle& Particle)

@@ -175,10 +175,14 @@ struct FBattleState
 	int32 FrameNumber = 0;
 	int32 TimeUntilRoundStart = 0;
 
+	/** Madrone change: used now. Frames before a fighter who tagged out can be tagged back in (the floor: a tag state can
+	 * set a longer one). */
 	UPROPERTY(EditAnywhere)
-	int32 TagCooldown = 300; //Not used?
+	int32 TagCooldown = 300;
+	/** Madrone change: used now. The shortest cooldown a dedicated assist (P1Assist / P2Assist) gets after it's called, in
+	 * frames: the assist states' own CooldownTime is in frames and the characters' values (1-5) made it almost nothing. */
 	UPROPERTY(EditAnywhere)
-	int32 AssistCooldown = 180;  //Not used?
+	int32 AssistCooldown = 300;
 	
 	UPROPERTY(EditAnywhere)
 	int32 RoundStartPos = 297500;
@@ -222,6 +226,10 @@ struct FBattleState
 	
 	int32 ActiveObjectCount = 0;
 	int32 CurrentSequenceTime = -1;
+
+	/** Madrone change: frames until each side's dedicated assist (P1Assist / P2Assist, outside the team) can be called
+	 * again. Set by the assist's own SetTeamCooldown (ST_CommonAssist's exit), counted down like the team cooldowns. */
+	int32 AssistCooldownTimer[2] {0, 0};
 	
 	FAudioChannel CommonAudioChannels[CommonAudioChannelCount];
 	FAudioChannel CharaAudioChannels[CharaAudioChannelCount];
@@ -289,8 +297,20 @@ public:
 	TArray<ABattleObject*> Objects {};
 	UPROPERTY(BlueprintReadOnly)
 	TArray<APlayerObject*> Players {};
-	APlayerObject* P1Assist = nullptr;
-	APlayerObject* P2Assist = nullptr;
+	/** Madrone change: the side's dedicated assist (P1Assist / P2Assist), or null. */
+	UFUNCTION(BlueprintPure, Category="Assist")
+	APlayerObject* GetAssist(const bool IsP1) const { return IsP1 ? P1Assist : P2Assist; }
+
+	/** Madrone change: the fighters rollback saves and checks: Players, then the dedicated assists (not in Players). */
+	TArray<APlayerObject*, TInlineAllocator<8>> GetRollbackPlayers() const;
+	/** Madrone change: the dedicated assists off screen and inactive at round start. */
+	void ResetAssistsForRound();
+
+	// Madrone change: UPROPERTYs (were raw pointers): GC clears them when the actors go, so IsValid checks are safe
+	UPROPERTY(Transient)
+	TObjectPtr<APlayerObject> P1Assist = nullptr;
+	UPROPERTY(Transient)
+	TObjectPtr<APlayerObject> P2Assist = nullptr;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category=Battle)
 	FBattleState BattleState {};
 	

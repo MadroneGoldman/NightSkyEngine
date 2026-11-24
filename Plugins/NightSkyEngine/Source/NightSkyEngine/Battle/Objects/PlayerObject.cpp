@@ -92,6 +92,16 @@ APlayerObject::APlayerObject()
 	std::fill_n(StoredInputBuffer.InputBufferInternal, InputBufferSize, INP_Neutral);
 }
 
+void APlayerObject::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	for (const FLinkedActorContainer& Container : StoredLinkActors)
+	{
+		if (IsValid(Container.StoredActor)) Container.StoredActor->Destroy();
+	}
+	StoredLinkActors.Empty();
+	Super::EndPlay(EndPlayReason);
+}
+
 void APlayerObject::BeginPlay()
 {
 	Super::BeginPlay();
@@ -1716,6 +1726,12 @@ APlayerObject* APlayerObject::SwitchMainPlayer(int NewTeamIndex, bool bForce, bo
 void APlayerObject::SetTeamCooldown(int NewTeamIndex, int Cooldown)
 {
 	if (!GameState) return;
+	// Madrone change: a dedicated assist (outside the team) sets its side's assist cooldown, not a team member's.
+	if (this == GameState->P1Assist || this == GameState->P2Assist)
+	{
+		GameState->BattleState.AssistCooldownTimer[this == GameState->P1Assist ? 0 : 1] = FMath::Max(Cooldown, GameState->BattleState.AssistCooldown);
+		return;
+	}
 	return GameState->SetTeamCooldown(PlayerIndex == 0, NewTeamIndex, Cooldown);
 }
 

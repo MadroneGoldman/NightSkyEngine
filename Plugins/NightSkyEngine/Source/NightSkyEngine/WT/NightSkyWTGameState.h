@@ -96,7 +96,8 @@ protected:
 	virtual void BeginPlay() override;
 	
 public:
-	void Init(APlayerObject* P1, APlayerObject* P2, APlayerObject* P1_TagTeammate = nullptr, APlayerObject* P1_AssistTeammate = nullptr, TArray<APlayerObject*> P2Allies = {});
+	/** Madrone change: P2_AssistTeammate, the opponent's dedicated assist (P2Assist), called like P1's. */
+	void Init(APlayerObject* P1, APlayerObject* P2, APlayerObject* P1_TagTeammate = nullptr, APlayerObject* P1_AssistTeammate = nullptr, TArray<APlayerObject*> P2Allies = {}, APlayerObject* P2_AssistTeammate = nullptr);
 
 private:
 	/** Position, height, in the game's own units. Never changes during a fight, so rollback doesn't need it. */
