@@ -13,6 +13,8 @@
 #include "Components/Border.h"
 #include "Components/Image.h"
 #include "Blueprint/WidgetTree.h"
+#include "Kismet/GameplayStatics.h"
+#include "Sound/SoundBase.h"
 #include "NightSkyEngine/Data/PrimaryCharaData.h"
 #include "EngineUtils.h"
 #include "NightSkyEngine/Battle/NightSkyGameState.h"
@@ -151,7 +153,7 @@ const ANightSkyGameState* UNickBattleHudTop::FindGameState() const
 void UNickBattleHudTop::BuildCooldownPanels()
 {
 	UCanvasPanel* Root = Cast<UCanvasPanel>(GetRootWidget());
-	if (!Root || !WidgetTree || TagBox[0]) return;
+	if (!Root || !WidgetTree || AssistBox[0]) return;
 	// the names' font, smaller, so the numbers match the HUD
 	FSlateFontInfo Font;
 	if (const UTextBlock* Name = Cast<UTextBlock>(GetWidgetFromName(TEXT("P1Name")))) Font = Name->GetFont();
@@ -167,14 +169,6 @@ void UNickBattleHudTop::BuildCooldownPanels()
 		RowSlot->SetAutoSize(true);
 		Row->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 
-		// TAG + seconds
-		UBorder* Tag = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-		Tag->SetBrushColor(FLinearColor(0.f, 0.f, 0.f, 0.55f));
-		Tag->SetPadding(FMargin(8.f, 2.f));
-		Tag->SetVerticalAlignment(VAlign_Center);
-		UTextBlock* TagLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		TagLabel->SetFont(Font);
-		Tag->SetContent(TagLabel);
 		// assist portrait, shade and seconds
 		USizeBox* Assist = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
 		Assist->SetWidthOverride(64.f);
@@ -200,20 +194,13 @@ void UNickBattleHudTop::BuildCooldownPanels()
 		Seconds->SetFont(Font);
 		Seconds->SetJustification(ETextJustify::Center);
 		Shade->SetContent(Seconds);
-		// P1: TAG then the assist; P2 mirrored
-		for (UWidget* Item : bRight ? TArray<UWidget*>{Assist, Tag} : TArray<UWidget*>{Tag, Assist})
-		{
-			UHorizontalBoxSlot* ItemSlot = Row->AddChildToHorizontalBox(Item);
-			ItemSlot->SetPadding(FMargin(bRight ? 8.f : 0.f, 0.f, bRight ? 0.f : 8.f, 0.f));
-			ItemSlot->SetVerticalAlignment(VAlign_Center);
-		}
-		TagBox[Side] = Tag;
-		TagText[Side] = TagLabel;
+		UHorizontalBoxSlot* ItemSlot = Row->AddChildToHorizontalBox(Assist);
+		ItemSlot->SetVerticalAlignment(VAlign_Center);
 		AssistBox[Side] = Assist;
+		AssistFrame[Side] = Frame;
 		AssistIcon[Side] = Icon;
 		AssistShade[Side] = Shade;
 		AssistText[Side] = Seconds;
-		Tag->SetVisibility(ESlateVisibility::Collapsed);
 		Assist->SetVisibility(ESlateVisibility::Collapsed);
 	}
 }
@@ -227,9 +214,7 @@ void UNickBattleHudTop::RefreshCooldownPanels()
 	{
 		const APlayerObject* Current = GameState ? (Side == 0 ? GameState->P1Assist : GameState->P2Assist) : nullptr;
 		ShownAssist[Side] = IsValid(Current) ? Current : nullptr;
-		if (!TagBox[Side]) continue;
-		const bool bHasPartner = GameState && GameState->BattleState.TeamData[Side].TeamCount > 1;
-		TagBox[Side]->SetVisibility(bHasPartner ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
+		if (!AssistBox[Side]) continue;
 		const APlayerObject* Assist = GameState ? (Side == 0 ? GameState->P1Assist : GameState->P2Assist) : nullptr;
 		if (!IsValid(Assist)) Assist = nullptr;
 		UTexture2D* Portrait = nullptr;
@@ -239,6 +224,9 @@ void UNickBattleHudTop::RefreshCooldownPanels()
 		}
 		if (Portrait)
 		{
+			// UI: all mips resident, as UImage::SetBrushFromTexture does (a streamed-out icon drew as a flat tile)
+			Portrait->bForceMiplevelsToBeResident = true;
+			Portrait->bIgnoreStreamingMipBias = true;
 			// a plain image brush: the border's default background is drawn as a box and ignores the texture
 			FSlateBrush Brush;
 			Brush.SetResourceObject(Portrait);
@@ -271,18 +259,63 @@ void UNickBattleHudTop::NativeTick(const FGeometry& MyGeometry, const float InDe
 			RefreshCooldownPanels();
 		}
 	}
+	const UWorld* World = GetWorld();
+	const float Pulse = 0.5f + 0.5f * FMath::Sin((World ? World->GetRealTimeSeconds() : 0.f) * UE_TWO_PI * 1.2f);
+	const FLinearColor ReadyPulse = FMath::Lerp(ReadyColor, FMath::Lerp(ReadyColor, FLinearColor::White, 0.6f), Pulse);
+	const FLinearColor Outline = ReadyColor * FLinearColor(0.35f, 0.35f, 0.35f, 1.f);
+	const FLinearColor Cooling(0.5f, 0.5f, 0.5f, 1.f);
 	for (int32 Side = 0; Side < 2; Side++)
 	{
-		if (!TagText[Side]) continue;
-		// the next partner's cooldown (team index 1: the team lists the fighter on screen first)
+		const bool bSounds = Side == 0 || bReadySoundForP2;
+
+		// Tag: seconds after the partner's name, the name pulsing when it's ready (team index 1: the team lists the
+		// fighter on screen first).
 		const TArray<float>& Cooldowns = Side == 0 ? P1Cooldowns : P2Cooldowns;
 		const int32 TagSeconds = Cooldowns.IsValidIndex(1) ? CooldownSeconds(Cooldowns[1]) : 0;
-		TagText[Side]->SetText(TagSeconds > 0 ? FText::Format(NSLOCTEXT("NSE", "TagCooldown", "TAG {0}"), TagSeconds) : NSLOCTEXT("NSE", "TagReady", "TAG"));
-		TagText[Side]->SetColorAndOpacity(TagSeconds > 0 ? FSlateColor(FLinearColor(0.55f, 0.55f, 0.55f)) : FSlateColor(FLinearColor::White));
+		UTextBlock* TagName = Cast<UTextBlock>(GetWidgetFromName(Side == 0 ? TEXT("P1TagName") : TEXT("P2TagName")));
+		const bool bHasPartner = TagName && !PartnerNames[Side].IsEmpty();
+		if (bHasPartner)
+		{
+			if (!bTagNameFont[Side])
+			{
+				TagNameFont[Side] = TagName->GetFont();
+				TagNameFont[Side].OutlineSettings = FFontOutlineSettings();
+				bTagNameFont[Side] = true;
+			}
+			FSlateFontInfo Font = TagNameFont[Side];
+			if (TagSeconds > 0)
+			{
+				TagName->SetText(FText::Format(NSLOCTEXT("NSE", "TagCooldown", "{0}  {1}"), PartnerNames[Side], TagSeconds));
+				TagName->SetColorAndOpacity(FSlateColor(Cooling));
+			}
+			else
+			{
+				TagName->SetText(PartnerNames[Side]);
+				TagName->SetColorAndOpacity(FSlateColor(ReadyPulse));
+				Font.OutlineSettings.OutlineSize = 2;
+				Font.OutlineSettings.OutlineColor = Outline;
+			}
+			TagName->SetFont(Font);
+			if (bSounds && LastTagSeconds[Side] > 0 && TagSeconds == 0) PlayReadySound();
+		}
+		LastTagSeconds[Side] = bHasPartner ? TagSeconds : 0;
+
+		// Assist: seconds over the portrait, the frame pulsing when it's ready.
+		if (!AssistBox[Side]) continue;
+		const bool bHasAssist = ShownAssist[Side].IsValid();
 		const int32 AssistSeconds = CooldownSeconds(Side == 0 ? P1AssistCooldown : P2AssistCooldown);
 		AssistText[Side]->SetText(AssistSeconds > 0 ? FText::AsNumber(AssistSeconds) : FText::GetEmpty());
 		AssistShade[Side]->SetBrushColor(FLinearColor(0.f, 0.f, 0.f, AssistSeconds > 0 ? 0.65f : 0.f));
+		AssistFrame[Side]->SetBrushColor(AssistSeconds > 0 ? Cooling : ReadyPulse);
+		AssistFrame[Side]->SetPadding(FMargin(AssistSeconds > 0 ? 2.f : 4.f));
+		if (bSounds && bHasAssist && LastAssistSeconds[Side] > 0 && AssistSeconds == 0) PlayReadySound();
+		LastAssistSeconds[Side] = bHasAssist ? AssistSeconds : 0;
 	}
+}
+
+void UNickBattleHudTop::PlayReadySound()
+{
+	if (USoundBase* Sound = ReadySound.LoadSynchronous()) UGameplayStatics::PlaySound2D(this, Sound);
 }
 
 void UNickBattleHudTop::SetMainPlayerIndex(bool IsP1, int PlayerIndex)
@@ -324,6 +357,8 @@ void UNickBattleHudTop::RefreshPlayerNames()
 		{
 			Tag->SetText(FText::FromString(FString::Join(Partners, TEXT(" / "))));
 			Tag->SetVisibility(Partners.Num() ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
+			PartnerNames[bIsP1 ? 0 : 1] = Tag->GetText(); // Madrone change: the cooldown panels add the seconds to it
+			bTagNameFont[bIsP1 ? 0 : 1] = false;
 		}
 	}
 }

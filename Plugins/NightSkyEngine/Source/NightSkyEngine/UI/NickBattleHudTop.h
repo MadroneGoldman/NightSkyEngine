@@ -45,11 +45,24 @@ public:
 	virtual void ApplyBattleHudStyle(bool bIsP1, const FNSEBattleHudStyle* Style, USlateWidgetStyleAsset* StyleAsset) override;
 	virtual void OnMainPlayersChanged() override;
 
-	/** Madrone change: per side, under the names, the tag cooldown (TAG + seconds, when the side has a partner) and the
-	 * dedicated assist's portrait (its CHR_ select icon) with its cooldown over it. Built in code on the root canvas, so
-	 * every battle HUD Blueprint gets it; refreshed at round init, numbers every frame. */
+	/** Madrone change: per side, under the names, the dedicated assist's portrait (its CHR_ select icon) with its cooldown
+	 * over it (built in code on the root canvas, so every battle HUD Blueprint gets it), and the tag cooldown next to the
+	 * tag partner's name (P1TagName / P2TagName). Ready to call: the partner's name and the portrait's frame pulse
+	 * ReadyColor with an outline, and ReadySound plays when one becomes ready. Refreshed at round init, every frame. */
 	UFUNCTION(BlueprintCallable, Category="Cooldowns")
 	void RefreshCooldownPanels();
+
+	/** Plays when a tag partner or an assist comes off cooldown. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Cooldowns")
+	TSoftObjectPtr<USoundBase> ReadySound = TSoftObjectPtr<USoundBase>(FSoftObjectPath(TEXT("/Engine/EngineSounds/1kSineTonePing.1kSineTonePing")));
+
+	/** Also for player 2's side (off: only the player's own, player 1). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Cooldowns")
+	bool bReadySoundForP2 = false;
+
+	/** What a ready tag partner name and assist frame pulse in. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Cooldowns")
+	FLinearColor ReadyColor = FLinearColor(1.f, 0.25f, 0.7f, 1.f);
 
 #if WITH_EDITORONLY_DATA
 	/** Designer only: shows this battle HUD style on both sides (an NSE Battle Hud Style asset). */
@@ -67,9 +80,8 @@ private:
 	void BuildCooldownPanels();
 	const class ANightSkyGameState* FindGameState() const;
 
-	UPROPERTY(Transient) TObjectPtr<class UWidget> TagBox[2];
-	UPROPERTY(Transient) TObjectPtr<class UTextBlock> TagText[2];
 	UPROPERTY(Transient) TObjectPtr<class UWidget> AssistBox[2];
+	UPROPERTY(Transient) TObjectPtr<class UBorder> AssistFrame[2];
 	/** Borders, not images: in the world-space top HUD (a widget component) runtime-made UImages don't draw. */
 	UPROPERTY(Transient) TObjectPtr<class UBorder> AssistIcon[2];
 	UPROPERTY(Transient) TObjectPtr<class UBorder> AssistShade[2];
@@ -79,6 +91,14 @@ private:
 	TWeakObjectPtr<const class ANightSkyGameState> CachedGameState;
 	TWeakObjectPtr<const class APlayerObject> ShownAssist[2];
 	bool bCooldownPanelsRefreshed = false;
+	/** The tag partners' names (as RefreshPlayerNames writes them) and their font without an outline. */
+	FText PartnerNames[2];
+	FSlateFontInfo TagNameFont[2];
+	bool bTagNameFont[2] = {false, false};
+	/** Last frame's seconds left, to play ReadySound when one reaches 0. */
+	int32 LastTagSeconds[2] = {0, 0};
+	int32 LastAssistSeconds[2] = {0, 0};
+	void PlayReadySound();
 
 	/** The Blueprint's own main bar scale and name fonts, put back when a style is cleared. */
 	TOptional<FVector2D> AuthoredBarScale[2];
