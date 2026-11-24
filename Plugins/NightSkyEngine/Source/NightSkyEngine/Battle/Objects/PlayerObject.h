@@ -272,7 +272,10 @@ public:
 	int32 RecoverableHealth;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	int32 ComboCounter;
-	
+	/** Madrone change: Just Defends this fighter made this match (for tests and HUDs). */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	int32 JustDefendCount = 0;
+
 	int32 TotalProration = 10000;
 	int32 ComboTimer;
 	uint32 InvulnFlags = 0;
@@ -314,6 +317,10 @@ protected:
 	uint32 CancelFlags = 0;
 	uint32 AirDashNoAttackTime = 0;
 	uint32 InstantBlockLockoutTimer = 0;
+	// Madrone change: Just Defend. Frames since back was last pressed (INT_MAX = not pressed yet), and whether back was
+	// held on the last update (to find the press).
+	int32 FramesSinceBackPress = INT_MAX;
+	bool bBackHeldLastFrame = false;
 	uint32 MeterCooldownTimer = 0;
 	int32 ThrowRange = 0;
 	int32 ThrowTechTimer = 0;
@@ -544,6 +551,12 @@ public:
 	bool IsCorrectBlock(EBlockType BlockType);
 	//jump to correct block state
 	void HandleBlockAction();
+	// Madrone change: Just Defend. True when back was pressed within the Battle Rules window before this hit.
+	bool IsJustDefend() const;
+	// Madrone change: Just Defend rewards (heal, recoverable health back) and hooks. Call when a Just Defend blocks a hit.
+	void ApplyJustDefend();
+	// Madrone change: tracks back presses for Just Defend. Call once per update, after the inputs are flipped.
+	void UpdateJustDefendInput();
 	//handles proximity blocking
 	void HandleProximityBlock();
 	//called right before state changes

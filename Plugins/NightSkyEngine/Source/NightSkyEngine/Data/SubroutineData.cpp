@@ -25,3 +25,4 @@ UE_DEFINE_GAMEPLAY_TAG_COMMENT(Subroutine_ThrowParam_Air, "Subroutine.ThrowParam
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(Witch_Subroutine_OnComboEnd, "Witch.Subroutine.OnComboEnd", "Witch: On Combo End (stacks; Parent is the attacker, Parent->Enemy the one who was hit)");
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(Witch_Subroutine_OnCounterHit, "Witch.Subroutine.OnCounterHit", "Witch: On Counter Hit (stacks; Parent is the attacking object, Parent->Player its fighter, Parent->Player->Enemy the one who was hit)");
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(Witch_Subroutine_OnUpdate, "Witch.Subroutine.OnUpdate", "Witch: On Update (stacks; once per frame the fighter updates, after Subroutine.OnUpdate; Parent is the fighter)");
+UE_DEFINE_GAMEPLAY_TAG_COMMENT(Witch_Subroutine_OnJustDefend, "Witch.Subroutine.OnJustDefend", "Witch: On Just Defend (stacks; Parent is the fighter who just defended, Parent->Enemy the attacker)");

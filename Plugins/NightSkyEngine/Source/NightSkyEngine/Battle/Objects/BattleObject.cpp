@@ -714,9 +714,10 @@ void ABattleObject::HandleHitCollision(ABattleObject* AttackedObj)
 			{
 				CallSubroutine(Subroutine_Cmn_OnBlock);
 
-				CreateCommonParticle(Particle_Guard, POS_Enemy,
-				                     FVector(0, 100, 0),
-				                     FRotator(HitCommon.HitAngle, 0, 0));
+				// Madrone change: Just Defend (back pressed just before the hit): no chip damage, a little health back,
+				// its own effect. Guard effects are mirrored by side (CreateGuardParticle).
+				const bool bJustDefend = AttackedPlayer->IsJustDefend();
+				CreateGuardParticle(bJustDefend ? Particle_JustDefend : Particle_Guard, AttackedPlayer);
 				TriggerEvent(EVT_Block, StateMachine_Primary);
 				if (AttackedPlayer->IsMainPlayer())
 				{
@@ -725,7 +726,9 @@ void ABattleObject::HandleHitCollision(ABattleObject* AttackedObj)
 
 				int32 ChipDamage = NormalHit.Damage * HitCommon.ChipDamagePercent / 100;
 				if (bSimpleInput) ChipDamage = UNightSkyBattleRules::ScaleSimpleInputDamage(ChipDamage); // Madrone change
+				if (bJustDefend) ChipDamage = 0; // Madrone change
 				AttackedPlayer->CurrentHealth -= ChipDamage;
+				if (bJustDefend) AttackedPlayer->ApplyJustDefend(); // Madrone change
 
 				const FHitData Data = InitHitDataByAttackLevel(false);
 				AttackedPlayer->ReceivedHitCommon = HitCommon;
@@ -800,9 +803,7 @@ void ABattleObject::HandleHitCollision(ABattleObject* AttackedObj)
 						}
 						else
 						{
-							CreateCommonParticle(Particle_Guard, POS_Enemy,
-							                     FVector(0, 100, 0),
-							                     FRotator(HitCommon.HitAngle, 0, 0));
+							CreateGuardParticle(Particle_Guard, AttackedPlayer); // Madrone change: mirrored by side
 						}
 
 						const FHitData Data = InitHitDataByAttackLevel(false);
@@ -3462,6 +3463,57 @@ void ABattleObject::CreateCommonParticle(FGameplayTag Name, EPosType PosType, FV
 			}
 		}
 	}
+}
+
+// Madrone change: guard effects, mirrored by side (see the header).
+void ABattleObject::CreateGuardParticle(FGameplayTag Name, APlayerObject* Blocker)
+{
+	if (!GameState || !Player || !Player->CommonParticleData || !IsValid(Blocker)) return;
+	UNiagaraSystem* System = nullptr;
+	for (const FParticleStruct& ParticleStruct : Player->CommonParticleData->ParticleStructs)
+	{
+		if (ParticleStruct.Name == Name && ParticleStruct.ParticleSystem)
+		{
+			System = ParticleStruct.ParticleSystem;
+			break;
+		}
+	}
+	if (!System) return;
+
+	// Which side the attacker (or its projectile) is on, seen from the blocker.
+	float Facing;
+	if (PosX != Blocker->PosX) Facing = PosX > Blocker->PosX ? 1.f : -1.f;
+	else Facing = Blocker->Direction == DIR_Right ? 1.f : -1.f;
+
+	int32 CenterX, CenterY;
+	Blocker->PosTypeToPosition(POS_Center, CenterX, CenterY);
+	const FVector CenterLocal(CenterX / COORD_SCALE, 0, CenterY / COORD_SCALE);
+
+	// Where the hit landed: where the boxes met, kept on the attacker's side and not too far above or below the centre.
+	FVector ImpactLocal = (ColPosX != 0 || ColPosY != 0)
+		                      ? FVector(ColPosX / COORD_SCALE, 0, ColPosY / COORD_SCALE) - CenterLocal
+		                      : FVector(Facing, 0, 0);
+	ImpactLocal.X = Facing * FMath::Max(FMath::Abs(ImpactLocal.X), 30.f);
+	ImpactLocal.Z = FMath::Clamp(ImpactLocal.Z, -60.f, 60.f);
+	ImpactLocal = ImpactLocal.GetSafeNormal();
+
+	const FQuat SceneRotation = GameState->BattleSceneTransform.GetRotation();
+	// A little toward the camera (+Y), so the effect draws over both fighters' bodies.
+	const FVector Location = SceneRotation.RotateVector(CenterLocal + FVector(0, 25, 0)) + GameState->BattleSceneTransform.GetLocation();
+	// Yaw turns local +X toward the attacker. Pitch is the same on both sides: with the yaw, that mirrors it.
+	const FRotator Rotation = (SceneRotation * FRotator(-HitCommon.HitAngle, Facing > 0 ? 0.f : 180.f, 0).Quaternion()).Rotator();
+
+	UNiagaraComponent* NiagaraComponent = UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+		this, System, Location, Rotation, FVector::OneVector);
+	if (!NiagaraComponent) return;
+	GameState->ParticleManager->BattleParticles.Add(FBattleParticle(NiagaraComponent, nullptr));
+	NiagaraComponent->SetAgeUpdateMode(ENiagaraAgeUpdateMode::DesiredAge);
+	NiagaraComponent->SetDesiredAge(0);
+	NiagaraComponent->SetVariableFloat(FName("Facing"), Facing);
+	NiagaraComponent->SetVariableVec3(FName("ImpactDir"), SceneRotation.RotateVector(ImpactLocal));
+	NiagaraComponent->SetVariableFloat(FName("ScreenSpaceDepthOffset"), ScreenSpaceDepthOffset);
+	NiagaraComponent->SetCustomDepthStencilValue(2);
+	NiagaraComponent->SetBoundsScale(40000);
 }
 
 void ABattleObject::CreateCharaParticle(FGameplayTag Name, EPosType PosType, FVector Offset, FRotator Rotation)

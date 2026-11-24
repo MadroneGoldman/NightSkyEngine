@@ -1258,6 +1258,16 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void CreateCommonParticle(FGameplayTag Name, EPosType PosType, FVector Offset = FVector::ZeroVector,
 	                          FRotator Rotation = FRotator::ZeroRotator);
+	/**
+	 * Madrone change: creates a common guard particle (Particle.Guard, Particle.JustDefend) on Blocker, mirrored by side.
+	 * Spawned at the blocker's centre (lower when crouching), turned so the system's local +X points at this object;
+	 * this replaces the sprite-style flip (pitch and UV) CreateCommonParticle does, which can't mirror a mesh. Systems
+	 * should keep their emitters in local space, put offsets on X only and stay symmetric in Y. User parameters set:
+	 * Facing (+1 when this object is on the blocker's +X side, else -1), ImpactDir (world-space unit vector from the
+	 * centre to where the boxes met, always on this object's side) and ScreenSpaceDepthOffset.
+	 */
+	UFUNCTION(BlueprintCallable)
+	void CreateGuardParticle(FGameplayTag Name, APlayerObject* Blocker);
 	//creates character particle
 	UFUNCTION(BlueprintCallable)
 	void CreateCharaParticle(FGameplayTag Name, EPosType PosType, FVector Offset = FVector::ZeroVector,

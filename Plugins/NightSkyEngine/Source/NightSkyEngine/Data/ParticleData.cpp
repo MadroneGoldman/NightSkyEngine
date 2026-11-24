@@ -8,6 +8,7 @@ UE_DEFINE_GAMEPLAY_TAG_COMMENT(Particle_Hit_L, "Particle.Hit.L", "Hit (Large) Pa
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(Particle_Hit_SP, "Particle.Hit.SP", "Hit (Special) Particle");
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(Particle_Hit_Clash, "Particle.Hit.Clash", "Hit Clash Particle");
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(Particle_Guard, "Particle.Guard", "Guard Particle");
+UE_DEFINE_GAMEPLAY_TAG_COMMENT(Particle_JustDefend, "Particle.JustDefend", "Just Defend Particle (shown instead of the guard particle)"); // Madrone change
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(Particle_ThrowTech, "Particle.ThrowTech", "Throw Tech Particle");
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(Particle_JumpSmoke_Land, "Particle.JumpSmoke.Land", "Jump Smoke (Land) Particle");
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(Particle_WallBounce, "Particle.WallBounce", "Wall Bounce Particle");

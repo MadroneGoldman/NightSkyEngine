@@ -505,7 +505,8 @@ void APlayerObject::Update()
 		Inputs = INP_Neutral;
 
 	HandleFlipInput();
-	
+	UpdateJustDefendInput(); // Madrone change
+
 	if (ComboCounter > 0)
 		ComboTimer++;
 
@@ -1868,6 +1869,50 @@ void APlayerObject::WriteInputCondition(FInputCondition& Condition)
 	StoredInputBuffer.WriteInputCondition(Condition);
 }
 #endif
+
+// Madrone change: Just Defend
+#if !UE_BUILD_SHIPPING
+static TAutoConsoleVariable<int32> CVarForceJustDefend(
+	TEXT("ns.JustDefend.Force"), 0,
+	TEXT("Testing only: 1 makes every blocked hit a Just Defend (for previewing the effect with an auto-guard dummy). ")
+	TEXT("Not rollback-safe online: leave it at 0 in matches."));
+#endif
+
+void APlayerObject::UpdateJustDefendInput()
+{
+	// Inputs are already flipped, so Left is back: 4, 1 or 7, but not with forward held.
+	const bool bBackHeld = (Inputs & INP_Left) && !(Inputs & INP_Right);
+	if (bBackHeld && !bBackHeldLastFrame)
+		FramesSinceBackPress = 0;
+	else if (FramesSinceBackPress < INT_MAX)
+		FramesSinceBackPress++;
+	bBackHeldLastFrame = bBackHeld;
+}
+
+bool APlayerObject::IsJustDefend() const
+{
+	const UNightSkyBattleRules* Rules = GetDefault<UNightSkyBattleRules>();
+	if (!Rules->bEnableJustDefend) return false;
+#if !UE_BUILD_SHIPPING
+	if (CVarForceJustDefend.GetValueOnGameThread() != 0) return true;
+#endif
+	// The fighters update one after the other, so a press on the hit frame itself may or may not have been read yet:
+	// either way the window covers JustDefendWindowFrames frames.
+	return FramesSinceBackPress < FMath::Max(1, Rules->JustDefendWindowFrames);
+}
+
+void APlayerObject::ApplyJustDefend()
+{
+	const UNightSkyBattleRules* Rules = GetDefault<UNightSkyBattleRules>();
+	CurrentHealth = FMath::Min(MaxHealth, CurrentHealth + FMath::Max(0, Rules->JustDefendHeal));
+	const int32 Recover = FMath::Min(FMath::Max(0, Rules->JustDefendRecoverableHeal), FMath::Max(0, MaxHealth - CurrentHealth));
+	RecoverHealth(Recover);
+	// One Just Defend per press: the next hit of a string needs a new press.
+	FramesSinceBackPress = INT_MAX;
+	JustDefendCount++;
+	PlayCommonSound(Sound_JustDefend);
+	CallSubroutines(Witch_Subroutine_OnJustDefend);
+}
 
 bool APlayerObject::IsCorrectBlock(EBlockType BlockType)
 {
@@ -3298,6 +3343,8 @@ void APlayerObject::RoundInit(bool ResetHealth)
 	}
 	AirDashNoAttackTime = 0;
 	InstantBlockLockoutTimer = 0;
+	FramesSinceBackPress = INT_MAX; // Madrone change: Just Defend
+	bBackHeldLastFrame = false;
 	MeterCooldownTimer = 0;
 	for (auto& LinkActor : StoredLinkActors)
 	{

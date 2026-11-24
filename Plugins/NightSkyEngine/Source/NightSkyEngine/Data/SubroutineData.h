@@ -33,6 +33,7 @@ UE_DECLARE_GAMEPLAY_TAG_EXTERN(Subroutine_ThrowParam_Air);
 UE_DECLARE_GAMEPLAY_TAG_EXTERN(Witch_Subroutine_OnComboEnd);
 UE_DECLARE_GAMEPLAY_TAG_EXTERN(Witch_Subroutine_OnCounterHit);
 UE_DECLARE_GAMEPLAY_TAG_EXTERN(Witch_Subroutine_OnUpdate);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(Witch_Subroutine_OnJustDefend);
 
 
 /**
