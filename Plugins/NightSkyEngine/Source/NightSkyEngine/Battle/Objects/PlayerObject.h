@@ -349,6 +349,18 @@ protected:
 	uint8 FootIKFlags = 3;
 
 public:
+	/**
+	 * Madrone change: this character's Just Defend window in frames. 0 uses Battle Rules > Just Defend Window Frames.
+	 * Set before the match starts (character default, loadout, spawner): not rollback state, so don't change it mid-match.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Just Defend", meta=(ClampMin="0", ClampMax="30"))
+	int32 JustDefendWindowOverride = 0;
+	/** Madrone change: frames added to the Just Defend window (battle equipment adds its bonus here). Same rule: set before the match. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Just Defend", meta=(ClampMin="0", ClampMax="30"))
+	int32 JustDefendWindowBonus = 0;
+	/** Madrone change: the Just Defend window this fighter gets: its override (or the Battle Rules one) plus its bonus. */
+	UFUNCTION(BlueprintPure, Category="Just Defend")
+	int32 GetJustDefendWindow() const;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	FText CharacterName;

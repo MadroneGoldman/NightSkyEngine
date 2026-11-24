@@ -5,8 +5,14 @@
 
 #include "NightSkyEngine/Battle/NightSkyGameState.h"
 #include "NightSkyEngine/Battle/Objects/PlayerObject.h"
+#include "NightSkyEngine/Miscellaneous/NightSkyBattleRules.h" // Madrone change
+#include "Misc/ScopeExit.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(NightSkyAIController)
+
+// Madrone change: tuning aid. 1 logs each CPU choice (state, weight, distance) and the best projectile's weight.
+static TAutoConsoleVariable<int32> CVarLogCPUChoices(TEXT("ns.CPU.LogChoices"), 0,
+	TEXT("1: log each CPU state choice with its weight and the enemy distance (LogTemp)."));
 
 // Sets default values
 ANightSkyAIController::ANightSkyAIController()
@@ -72,9 +78,19 @@ void ANightSkyAIController::Update()
 	{
 		auto MaxWeight = 0;
 		UState* CurState = nullptr;
+		int32 BestProjectileWeight = INT_MIN; // Madrone change: for ns.CPU.LogChoices
+		FGameplayTag BestProjectile;
 		for (const auto State : AvailableStates)
 		{
-			int Weight;
+			int Weight = 0;
+			ON_SCOPE_EXIT
+			{
+				if (State->CPUData.bProjectile && State->CPUData.bAttack && Weight > BestProjectileWeight)
+				{
+					BestProjectileWeight = Weight;
+					BestProjectile = State->Name;
+				}
+			};
 			if (bDefendOnly)
 			{
 				if (!State->CPUData.bAttack)
@@ -115,6 +131,12 @@ void ANightSkyAIController::Update()
 				}
 			}
 		}
+		if (CVarLogCPUChoices.GetValueOnGameThread() && CurState)
+		{
+			UE_LOG(LogTemp, Log, TEXT("CPU %s: %s weight %d, distance %d, defend %d, best projectile %s %d (of %d states)"),
+			       *Player->GetName(), *CurState->Name.ToString(), MaxWeight, GetEnemyDistanceX(), bDefendOnly ? 1 : 0,
+			       *BestProjectile.ToString(), BestProjectileWeight == INT_MIN ? 0 : BestProjectileWeight, AvailableStates.Num());
+		}
 		if (TargetState != CurState && CurState != nullptr)
 		{
 			ResetParams();
@@ -137,10 +159,12 @@ void ANightSkyAIController::ResetParams()
 bool ANightSkyAIController::SetInputs()
 {
 	if (!TargetState || TargetState->InputConditionLists.Num() == 0) return false;
+	// Madrone change: the limit is checked once, then the whole list is written. Checked per condition, a 3-direction
+	// motion (236) went over it before its button, the next update started again from the motion, and the CPU never
+	// did a motion special or super.
+	if (InputCount > InputCountLimit) return false;
 	for (auto Condition : TargetState->InputConditionLists[0].InputConditions)
 	{
-		if (InputCount > InputCountLimit) return false;
-		
 		Player->StoredInputBuffer.WriteInputCondition(Condition);
 		InputCount += Condition.Sequence.Num();
 	}
@@ -274,9 +298,18 @@ int32 ANightSkyAIController::CheckAttackWeight(const UState* State) const
 
 	int32 Weight = GameState->BattleState.RandomManager.RandRange(50, 100);
 
-	if (!Player->CheckEnemyInRange(State->CPUData.AttackXBeginRange, State->CPUData.AttackXEndRange,
-								   State->CPUData.AttackYBeginRange, State->CPUData.AttackYEndRange))
+	const bool bInRange = Player->CheckEnemyInRange(State->CPUData.AttackXBeginRange, State->CPUData.AttackXEndRange,
+	                                                State->CPUData.AttackYBeginRange, State->CPUData.AttackYEndRange);
+	if (!bInRange)
 		Weight -= 50;
+
+	// Madrone change: projectiles from far away. Without this, walking and dashing in outscored a fireball at range.
+	const UNightSkyBattleRules* Rules = GetDefault<UNightSkyBattleRules>();
+	if (State->CPUData.bProjectile && bInRange && Rules->CPUFarProjectileBonus > 0
+		&& GetEnemyDistanceX() >= Rules->CPUFarProjectileDistance)
+	{
+		Weight += GameState->BattleState.RandomManager.RandRange(Rules->CPUFarProjectileBonus / 2, Rules->CPUFarProjectileBonus * 3 / 2);
+	}
 
 	if (Player->PosY - Player->GroundHeight < Player->Enemy->PosY - Player->Enemy->GroundHeight && State->CPUData.bAntiAir) Weight += GameState->BattleState.RandomManager.RandRange(15, 40);
 

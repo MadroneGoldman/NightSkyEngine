@@ -3487,7 +3487,11 @@ void ABattleObject::CreateGuardParticle(FGameplayTag Name, APlayerObject* Blocke
 
 	int32 CenterX, CenterY;
 	Blocker->PosTypeToPosition(POS_Center, CenterX, CenterY);
-	const FVector CenterLocal(CenterX / COORD_SCALE, 0, CenterY / COORD_SCALE);
+	FVector CenterLocal(CenterX / COORD_SCALE, 0, CenterY / COORD_SCALE);
+	// Crouching: smaller, and its centre high enough that it doesn't sink into the floor (POS_Center is only 39 cm up).
+	const bool bCrouching = Blocker->Stance == ACT_Crouching;
+	const float Scale = bCrouching ? 0.7f : 1.f;
+	if (bCrouching) CenterLocal.Z = Blocker->PosY / COORD_SCALE + 55.f;
 
 	// Where the hit landed: where the boxes met, kept on the attacker's side and not too far above or below the centre.
 	FVector ImpactLocal = (ColPosX != 0 || ColPosY != 0)
@@ -3504,7 +3508,7 @@ void ABattleObject::CreateGuardParticle(FGameplayTag Name, APlayerObject* Blocke
 	const FRotator Rotation = (SceneRotation * FRotator(-HitCommon.HitAngle, Facing > 0 ? 0.f : 180.f, 0).Quaternion()).Rotator();
 
 	UNiagaraComponent* NiagaraComponent = UNiagaraFunctionLibrary::SpawnSystemAtLocation(
-		this, System, Location, Rotation, FVector::OneVector);
+		this, System, Location, Rotation, FVector(Scale));
 	if (!NiagaraComponent) return;
 	GameState->ParticleManager->BattleParticles.Add(FBattleParticle(NiagaraComponent, nullptr));
 	NiagaraComponent->SetAgeUpdateMode(ENiagaraAgeUpdateMode::DesiredAge);

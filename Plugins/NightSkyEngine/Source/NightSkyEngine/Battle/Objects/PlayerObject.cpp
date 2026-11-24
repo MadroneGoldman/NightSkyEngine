@@ -1897,8 +1897,14 @@ bool APlayerObject::IsJustDefend() const
 	if (CVarForceJustDefend.GetValueOnGameThread() != 0) return true;
 #endif
 	// The fighters update one after the other, so a press on the hit frame itself may or may not have been read yet:
-	// either way the window covers JustDefendWindowFrames frames.
-	return FramesSinceBackPress < FMath::Max(1, Rules->JustDefendWindowFrames);
+	// either way the window covers GetJustDefendWindow() frames.
+	return FramesSinceBackPress < GetJustDefendWindow();
+}
+
+int32 APlayerObject::GetJustDefendWindow() const
+{
+	const int32 Base = JustDefendWindowOverride > 0 ? JustDefendWindowOverride : GetDefault<UNightSkyBattleRules>()->JustDefendWindowFrames;
+	return FMath::Max(1, Base + FMath::Max(0, JustDefendWindowBonus));
 }
 
 void APlayerObject::ApplyJustDefend()

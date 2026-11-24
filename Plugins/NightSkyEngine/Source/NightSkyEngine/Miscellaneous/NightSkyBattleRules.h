@@ -47,6 +47,21 @@ public:
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Just Defend", meta = (ClampMin = "0"))
 	int32 JustDefendRecoverableHeal = 250;
 
+	/**
+	 * CPU: how far away (engine units, about 2326 per cm) the enemy must be for a projectile move (CPU Data > Projectile)
+	 * to get the far-away bonus. The move's own CPU Data X/Y range must also contain the enemy.
+	 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CPU", meta = (ClampMin = "0"))
+	int32 CPUFarProjectileDistance = 600000;
+
+	/**
+	 * CPU: average weight a projectile gets from far away (a random half to one and a half times this). Walking and
+	 * dashing in score about 150 there, an in-range attack about 75: higher throws more fireballs. 0 turns it off.
+	 * Measured keeping away for 20 s from Dark Knight: 0 = 5 fireballs, 40 = 22 (mixed with dashing in), 100 = 56 (nonstop).
+	 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CPU", meta = (ClampMin = "0"))
+	int32 CPUFarProjectileBonus = 40;
+
 	virtual FName GetContainerName() const override { return TEXT("Project"); }
 	virtual FName GetCategoryName() const override { return TEXT("Night Sky Engine"); }
 };
