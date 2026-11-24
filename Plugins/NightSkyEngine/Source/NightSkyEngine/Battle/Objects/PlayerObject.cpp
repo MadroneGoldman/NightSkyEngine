@@ -477,12 +477,18 @@ void APlayerObject::Update()
 		}
 	}
 
-	// Madrone change: Baroque Cancel slowdown. Half speed: every other frame stands still, like a frame of hitstop.
+	// Madrone change: Baroque Cancel slowdown. Half speed: every other frame the fighter stands still (no movement, state,
+	// stun or timers), but what's pressed is kept for its next frame. Not hitstop: a 1-frame hitstop is counted down in
+	// ABattleObject::Update before it stops anything, and its last frame skips the object's timers and flip.
 	if (SlowdownTimer > 0)
 	{
 		SlowdownTimer--;
-		if ((SlowdownTimer & 1) && Hitstop == 0) Hitstop = 1;
 		if (SlowdownTimer == 0) bSlowdownPersistent = false;
+		else if ((SlowdownTimer & 1) && Hitstop == 0 && !(PlayerFlags & PLF_IsThrowLock))
+		{
+			if (!bIsCpu) StoredInputBuffer.Update(Inputs, true);
+			return CallPostUpdateDebugBps();
+		}
 	}
 
 	Super::Update();
@@ -520,6 +526,7 @@ void APlayerObject::Update()
 
 	HandleFlipInput();
 	UpdateJustDefendInput(); // Madrone change
+	UpdateParryInput(); // Madrone change
 
 	if (ComboCounter > 0)
 		ComboTimer++;
@@ -695,6 +702,8 @@ void APlayerObject::Update()
 
 	if (StrikeInvulnerableTimer > 0)
 		StrikeInvulnerableTimer--;
+	if (BaroqueRelockTimer > 0) // Madrone change: Baroque Cancel
+		BaroqueRelockTimer--;
 	if (ThrowInvulnerableTimer > 0)
 		ThrowInvulnerableTimer--;
 	if (ThrowResistTimer > 0)
@@ -1938,6 +1947,116 @@ void APlayerObject::ApplyJustDefend()
 	CallSubroutines(Witch_Subroutine_OnJustDefend);
 }
 
+// Madrone change: Street Fighter III: 3rd Strike parry (bThirdStrikeParry). Docs: WitchTools Docs/Parry.md.
+void APlayerObject::UpdateParryInput()
+{
+	if (!bThirdStrikeParry) return;
+	if (ParryCooldown > 0) ParryCooldown--;
+	if (ParryAutoTimer > 0) ParryAutoTimer--;
+	const bool bAir = PosY > GroundHeight;
+	const bool bEnemyAir = IsValid(Enemy) && Enemy->PosY > Enemy->GroundHeight;
+	// Inputs are already flipped: Right is forward. 6 or 9 for forward (not 3: that's down), 2 / 1 / 3 for down.
+	const bool bForward = (Inputs & INP_Right) && !(Inputs & INP_Down);
+	const bool bDown = (Inputs & INP_Down) != 0;
+	auto Track = [&](const bool bHeld, bool& bHeldLast, int32& Age, bool& bReleased, bool& bInAir, const int32 Cooldown)
+	{
+		if (bHeld && !bHeldLast && ParryCooldown == 0)
+		{
+			Age = 0;
+			bReleased = false;
+			bInAir = bAir;
+			ParryCooldown = Cooldown;
+		}
+		else if (Age < INT_MAX)
+		{
+			Age++;
+			if (!bHeld) bReleased = true;
+		}
+		bHeldLast = bHeld;
+	};
+	Track(bForward, bParryForwardHeldLastFrame, ParryForwardAge, bParryForwardReleased, bParryForwardInAir,
+	      bAir ? ParryAirCooldown : bEnemyAir ? ParryAntiAirCooldown : ParryGroundCooldown);
+	Track(bDown, bParryDownHeldLastFrame, ParryDownAge, bParryDownReleased, bParryDownInAir,
+	      bAir ? ParryAirCooldown : ParryGroundCooldown);
+}
+
+bool APlayerObject::TryThirdStrikeParry(ABattleObject* Attacker)
+{
+	if (!bThirdStrikeParry || !Attacker || !GameState) return false;
+	if (PlayerFlags & (PLF_IsDead | PLF_IsKnockedDown)) return false;
+	const FHitDataCommon& Hit = Attacker->HitCommon;
+	if (Hit.BlockType == BLK_None) return false; // unblockable: no parry either
+
+	// Only while free to act, or blocking (red parry). Not during your own attack, a hit, a tech...
+	const EStateType State = PrimaryStateMachine.CurrentState ? PrimaryStateMachine.CurrentState->StateType : EStateType::Standing;
+	const bool bRed = State == EStateType::Blockstun;
+	switch (State)
+	{
+	case EStateType::Standing: case EStateType::Crouching:
+	case EStateType::NeutralJump: case EStateType::ForwardJump: case EStateType::BackwardJump:
+	case EStateType::ForwardWalk: case EStateType::BackwardWalk:
+	case EStateType::ForwardDash: case EStateType::BackwardDash:
+	case EStateType::ForwardAirDash: case EStateType::BackwardAirDash:
+	case EStateType::Blockstun:
+		break;
+	default:
+		if (ParryAutoTimer <= 0) return false;
+	}
+
+	const APlayerObject* AttackingPlayer = Attacker->IsPlayer ? Attacker->Player : nullptr;
+	const bool bSpecial = !AttackingPlayer || (AttackingPlayer->PrimaryStateMachine.CurrentState
+		&& (AttackingPlayer->PrimaryStateMachine.CurrentState->StateType == EStateType::SpecialAttack
+			|| AttackingPlayer->PrimaryStateMachine.CurrentState->StateType == EStateType::SuperAttack));
+	const bool bAttackerAir = AttackingPlayer && AttackingPlayer->PosY > AttackingPlayer->GroundHeight;
+	const bool bAir = PosY > GroundHeight;
+
+	auto InWindow = [&](const int32 Age, const bool bReleased, const bool bInAir, const bool bForwardTap)
+	{
+		if (Age == INT_MAX) return false;
+		if (bRed) return Age < (bSpecial ? RedParrySpecialWindow : RedParryWindow);
+		if (bInAir || bAir) return Age < (bReleased ? ParryAirWindow : FMath::Min(ParryAirWindow, ParryHeldWindow));
+		if (bForwardTap && bAttackerAir) return Age < ParryAntiAirWindow;
+		return Age < (bReleased ? ParryGroundWindow : ParryHeldWindow);
+	};
+	// Forward parries highs and mids (and anything in the air); down parries lows, and light ground mids.
+	const bool bForwardOk = Hit.BlockType != BLK_Low || bAir;
+	const bool bDownOk = !bAir && (Hit.BlockType == BLK_Low || (Hit.BlockType == BLK_Mid && Hit.AttackLevel <= 0 && !bAttackerAir));
+	bool bParried = ParryAutoTimer > 0;
+	bParried |= bForwardOk && InWindow(ParryForwardAge, bParryForwardReleased, bParryForwardInAir, true);
+	bParried |= bDownOk && InWindow(ParryDownAge, bParryDownReleased, bParryDownInAir, false);
+	// A CPU can't tap in time on its own: give it a chance scaled by its difficulty (no RNG: the same on every machine).
+	if (!bParried && bIsCpu && CPUParryChance > 0 && (bForwardOk || bDownOk))
+	{
+		const uint32 Roll = HashCombine(GetTypeHash(GameState->BattleState.FrameNumber), GetTypeHash(Attacker->ActionTime)) % 100;
+		bParried = static_cast<int32>(Roll) < CPUParryChance * FMath::Clamp(CPUDifficulty, 0, 100) / 100;
+	}
+	if (!bParried) return false;
+
+	// Parried: no damage or stun; both freeze, the attacker longer (a projectile freezes on its own).
+	int32 Bonus = 0;
+	if (AttackingPlayer && !bSpecial)
+	{
+		Bonus = Hit.AttackLevel <= 1 ? ParryLightBonus : Hit.AttackLevel == 2 ? ParryMediumBonus : ParryHeavyBonus;
+	}
+	Hitstop = ParryFreeze;
+	Attacker->Hitstop = ParryFreeze + Bonus;
+	StunTime = 0;
+	PlayerFlags &= ~PLF_IsStunned;
+	if (bRed) JumpToStatePrimary(Stance == ACT_Crouching ? State_Universal_Crouch : State_Universal_Stand);
+	// One parry per tap; any hit right after this one's freeze is parried too.
+	ParryForwardAge = INT_MAX;
+	ParryDownAge = INT_MAX;
+	ParryCooldown = 0;
+	ParryAutoTimer = ParryFreeze + ParryAutoFrames;
+	ParryCount++;
+	AddColor = FLinearColor(0.15f, 0.35f, 0.9f, 1);
+	AddFadeSpeed = 0.06f;
+	Attacker->CreateGuardParticle(Particle_Parry, this);
+	PlayCommonSound(Sound_Parry);
+	Attacker->TriggerEvent(EVT_Parried, StateMachine_Primary);
+	return true;
+}
+
 // Madrone change: Baroque Cancel (a Roman Cancel)
 #if !UE_BUILD_SHIPPING
 static TAutoConsoleVariable<int32> CVarBaroqueCancelFree(
@@ -1950,6 +2069,7 @@ bool APlayerObject::CanBaroqueCancel() const
 {
 	if (PlayerFlags & (PLF_IsDead | PLF_IsThrowLock | PLF_IsKnockedDown)) return false;
 	if (!PrimaryStateMachine.CurrentState) return false;
+	if (BaroqueRelockTimer > 0) return false;
 	const EStateType Current = PrimaryStateMachine.CurrentState->StateType;
 	// Not while being hit (that's a burst's job), and not again while already in one.
 	const bool bTraining = GameState && GameState->GameInstance && GameState->GameInstance->IsTraining; // free in training
@@ -1966,6 +2086,15 @@ EBaroqueCancelType APlayerObject::WorkOutBaroqueCancelType() const
 	if (Current == EStateType::Blockstun) return EBaroqueCancelType::Yellow;
 	const bool bAttacking = (AttackFlags & ATK_IsAttacking)
 		|| (Current >= EStateType::NormalAttack && Current <= EStateType::SuperAttack);
+	// Kara: a normal in its first frames that hasn't hit was most likely the first button of a sloppy A+C+E.
+	if (Current == EStateType::NormalAttack && !(AttackFlags & ATK_HasHit)
+		&& ActionTime <= GetDefault<UNightSkyBattleRules>()->BaroqueKaraFrames)
+	{
+		const EStateType EnemyState = IsValid(Enemy) && Enemy->PrimaryStateMachine.CurrentState
+			                              ? Enemy->PrimaryStateMachine.CurrentState->StateType : EStateType::Standing;
+		return EnemyState == EStateType::Hitstun || EnemyState == EStateType::Blockstun
+			       ? EBaroqueCancelType::Red : EBaroqueCancelType::Blue;
+	}
 	if (bAttacking) return (AttackFlags & ATK_HasHit) ? EBaroqueCancelType::Red : EBaroqueCancelType::Purple;
 	return EBaroqueCancelType::Blue;
 }
@@ -2006,14 +2135,16 @@ EBaroqueDrift APlayerObject::WorkOutBaroqueDrift(const UState* BaroqueState)
 		return EBaroqueDrift::Forward; // neutral + dash
 	};
 
-	if (Baroque->DriftDashButton != 0 && Pressed(Baroque->DriftDashButton, EInputMethod::PositiveEdge, Lenience))
+	// The dash button pressed just before, or still held (running with it held, then the Baroque Cancel).
+	if (Baroque->DriftDashButton != 0 && (Pressed(Baroque->DriftDashButton, EInputMethod::PositiveEdge, Lenience)
+		|| Pressed(Baroque->DriftDashButton, EInputMethod::Normal, 1)))
 	{
 		// The direction held now, from the buffer (facing-relative).
 		return FromDirection(Pressed(INP_Up, EInputMethod::Normal, 1), Pressed(INP_Down, EInputMethod::Normal, 1),
 		                     Pressed(INP_Left, EInputMethod::Normal, 1), Pressed(INP_Right, EInputMethod::Normal, 1));
 	}
-	// A dash that just started (a double tap or the dash button): that way. A long run isn't a drift.
-	switch (PrimaryStateMachine.CurrentState && ActionTime <= Lenience ? PrimaryStateMachine.CurrentState->StateType : EStateType::Standing)
+	// Dashing, running or air dashing: drift that way (pressing it out of a run slides on, it doesn't stop dead).
+	switch (PrimaryStateMachine.CurrentState ? PrimaryStateMachine.CurrentState->StateType : EStateType::Standing)
 	{
 	case EStateType::ForwardDash:
 	case EStateType::ForwardAirDash: return EBaroqueDrift::Forward;
@@ -2029,13 +2160,14 @@ EBaroqueDrift APlayerObject::WorkOutBaroqueDrift(const UState* BaroqueState)
 	return EBaroqueDrift::None;
 }
 
-void APlayerObject::StartSlowdown(const int32 Frames, const bool bPersistent)
+void APlayerObject::StartSlowdown(const int32 Frames, const bool bPersistent, const EBaroqueCancelType Kind)
 {
 	if (Frames <= 0) return;
 	if (Frames >= SlowdownTimer)
 	{
 		SlowdownTimer = Frames;
 		bSlowdownPersistent = bPersistent;
+		SlowdownType = Kind;
 	}
 	else
 	{
@@ -3492,6 +3624,7 @@ void APlayerObject::RoundInit(bool ResetHealth)
 	bBackHeldLastFrame = false;
 	SlowdownTimer = 0; // Madrone change: Baroque Cancel
 	bSlowdownPersistent = false;
+	BaroqueRelockTimer = 0;
 	MeterCooldownTimer = 0;
 	for (auto& LinkActor : StoredLinkActors)
 	{

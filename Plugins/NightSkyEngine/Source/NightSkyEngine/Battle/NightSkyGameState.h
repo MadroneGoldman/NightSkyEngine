@@ -313,6 +313,10 @@ public:
 	TObjectPtr<APlayerObject> P2Assist = nullptr;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category=Battle)
 	FBattleState BattleState {};
+
+	/** Madrone change: Baroque Cancel looks (screen darkening, afterimages). Presentation only, not rollback state. */
+	UPROPERTY(Transient)
+	TObjectPtr<class UBaroqueCancelVisuals> BaroqueVisuals;
 	
 	UPROPERTY()
 	TArray<ABattleObject*> SortedObjects {};
@@ -382,6 +386,47 @@ public:
 	/** Madrone change: the sequence frame the camera update last scrubbed to (-1 = none). It scrubs through every frame
 	 * since, so event keys on frames a slow render frame would skip still fire. Presentation only, not rollback state. */
 	int32 LastScrubbedSequenceTime = -1;
+
+	/**
+	 * Madrone change: sequence cameras (victory poses, cinematic supers) never go into the ground or through walls. Each
+	 * frame the camera is pulled toward the fighter the sequence follows if anything solid is between them, then kept
+	 * Clearance above the ground under it (ResolveCameraCollision). Docs: WitchTools Docs/BattleCamera.md (Sequence cameras).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sequence Camera Collision")
+	bool bSequenceCameraAvoidCollision = true;
+
+	/** Radius (cm) of the sphere swept from the fighter to the camera: how close the camera may come to a surface. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sequence Camera Collision", meta = (ClampMin = "1"))
+	float SequenceCameraProbeRadius = 15.f;
+
+	/** Height (cm) kept between the camera and the ground straight below it. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sequence Camera Collision", meta = (ClampMin = "0"))
+	float SequenceCameraGroundClearance = 35.f;
+
+	/** The point on the fighter the sweep starts from: this high (cm) above its feet. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sequence Camera Collision", meta = (ClampMin = "0"))
+	float SequenceCameraFocusHeight = 90.f;
+
+	/** How fast (per second) the camera goes back out to its keyed spot once nothing is in the way. Pulling in is instant,
+	 * so it never shows the inside of the ground for a frame. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sequence Camera Collision", meta = (ClampMin = "0"))
+	float SequenceCameraReleaseSpeed = 6.f;
+
+	/**
+	 * Madrone change: where a camera that wants to be at Desired, looking at Focus, can be without being inside or behind
+	 * solid world geometry (static objects: landscape, walls, rocks). A sphere of ProbeRadius is swept from Focus to Desired
+	 * and stops at the first hit; then the camera is raised to stay GroundClearance above the ground under it. Ignores
+	 * the actors in Ignore (the fighters). Usable for any camera: see WitchTools Docs/BattleCamera.md (Sequence cameras).
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Camera", meta = (WorldContext = "WorldContextObject", AutoCreateRefTerm = "Ignore"))
+	static FVector ResolveCameraCollision(const UObject* WorldContextObject, const FVector& Focus, const FVector& Desired,
+	                                      float ProbeRadius, float GroundClearance, const TArray<AActor*>& Ignore);
+
+private:
+	/** The sequence camera's current pull from its keyed spot (cm, world), eased back out. Presentation only. */
+	FVector SequenceCameraPull = FVector::ZeroVector;
+	void AvoidSequenceCameraCollision();
+public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float CameraYaw = -2.5f;

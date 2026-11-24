@@ -322,12 +322,29 @@ protected:
 	// held on the last update (to find the press).
 	int32 FramesSinceBackPress = INT_MAX;
 	bool bBackHeldLastFrame = false;
+	// Madrone change: 3rd Strike parry (bThirdStrikeParry). Frames since forward / down was tapped (INT_MAX = no tap),
+	// whether it was let go since, whether it was tapped in the air, last frame's held state, the lockout after a tap,
+	// and the auto-parry time after a parry.
+	int32 ParryForwardAge = INT_MAX;
+	int32 ParryDownAge = INT_MAX;
+	bool bParryForwardReleased = false;
+	bool bParryDownReleased = false;
+	bool bParryForwardInAir = false;
+	bool bParryDownInAir = false;
+	bool bParryForwardHeldLastFrame = false;
+	bool bParryDownHeldLastFrame = false;
+	int32 ParryCooldown = 0;
+	int32 ParryAutoTimer = 0;
 	// Madrone change: Baroque Cancel. The kind picked when it was pressed, and slowdown (half speed) from an opponent's.
 	EBaroqueCancelType BaroqueCancelType = EBaroqueCancelType::Blue;
 	int32 SlowdownTimer = 0;
 	bool bSlowdownPersistent = false;
+	// Madrone change: the kind of Baroque Cancel that slowed this fighter (the colour of its slowdown effect).
+	EBaroqueCancelType SlowdownType = EBaroqueCancelType::Blue;
 	// Madrone change: the Baroque Cancel's drift direction, picked with its kind.
 	EBaroqueDrift BaroqueDrift = EBaroqueDrift::None;
+	// Madrone change: frames after a Baroque Cancel before another (its buffered button would start a second one).
+	int32 BaroqueRelockTimer = 0;
 	uint32 MeterCooldownTimer = 0;
 	int32 ThrowRange = 0;
 	int32 ThrowTechTimer = 0;
@@ -372,6 +389,65 @@ public:
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="CPU", meta=(ClampMin="0", ClampMax="100"))
 	int32 CPUDifficulty = 50;
+
+	/**
+	 * Madrone change: Street Fighter III: 3rd Strike parry. Tap forward just before a high or mid attack (or an air attack),
+	 * or down just before a low one: no damage, no blockstun, both fighters freeze and the attacker stays frozen a few
+	 * frames longer, so the parrier gets the first move. Works in the air, and from blockstun with a tighter window (red
+	 * parry). Character setting, set on the Blueprint (Milkman); not rollback state. Docs: WitchTools Docs/Parry.md.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Parry")
+	bool bThirdStrikeParry = false;
+
+	/** Parry windows in frames (3rd Strike): a ground parry tapped and let go; held (still holding forward / down). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Parry", meta=(ClampMin="1"))
+	int32 ParryGroundWindow = 10;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Parry", meta=(ClampMin="1"))
+	int32 ParryHeldWindow = 6;
+	/** Standing, tapping forward against an attacker in the air. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Parry", meta=(ClampMin="1"))
+	int32 ParryAntiAirWindow = 5;
+	/** Tapped in the air (6 if held, like the ground). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Parry", meta=(ClampMin="1"))
+	int32 ParryAirWindow = 7;
+	/** Red parry (from blockstun): against normals, and against specials and supers. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Parry", meta=(ClampMin="1"))
+	int32 RedParryWindow = 3;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Parry", meta=(ClampMin="1"))
+	int32 RedParrySpecialWindow = 2;
+	/** After a tap, no new parry can start for this long (ground 23, against an air attacker 18, in the air 20). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Parry", meta=(ClampMin="0"))
+	int32 ParryGroundCooldown = 23;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Parry", meta=(ClampMin="0"))
+	int32 ParryAntiAirCooldown = 18;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Parry", meta=(ClampMin="0"))
+	int32 ParryAirCooldown = 20;
+	/** Both fighters (or the parried projectile) freeze this long. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Parry", meta=(ClampMin="0"))
+	int32 ParryFreeze = 16;
+	/** The attacker stays frozen this much longer, by attack level: light (0-1), medium (2), heavy (3+). Specials,
+	 * supers and projectiles get nothing extra. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Parry", meta=(ClampMin="0"))
+	int32 ParryLightBonus = 4;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Parry", meta=(ClampMin="0"))
+	int32 ParryMediumBonus = 3;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Parry", meta=(ClampMin="0"))
+	int32 ParryHeavyBonus = 2;
+	/** After a parry's freeze, any hit in this many frames is parried too. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Parry", meta=(ClampMin="0"))
+	int32 ParryAutoFrames = 2;
+	/** When a CPU controls this fighter: percent of parryable hits it parries at CPU Difficulty 100 (scaled down). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Parry", meta=(ClampMin="0", ClampMax="100"))
+	int32 CPUParryChance = 30;
+
+	/** Madrone change: parries this match (tests). */
+	UPROPERTY(BlueprintReadOnly, Category="Parry")
+	int32 ParryCount = 0;
+
+	/** Madrone change: whether the hit from Attacker (a fighter or its projectile) is parried; if so, applies it (freezes,
+	 * effect, out of blockstun) and the caller drops the hit. */
+	bool TryThirdStrikeParry(ABattleObject* Attacker);
+	void UpdateParryInput();
 
 	/**
 	 * Madrone change: how patient this fighter is when a CPU controls it, 0-100. Above 50 it waits, walks back (blocking)
@@ -610,9 +686,17 @@ public:
 	/** Madrone change: run at half speed for Frames. Persistent slowdown lasts through hits and blocks; otherwise either
 	 * fighter's next hit or block ends it. A longer slowdown already running is kept. */
 	UFUNCTION(BlueprintCallable, Category = "Baroque Cancel")
-	void StartSlowdown(int32 Frames, bool bPersistent);
+	void StartSlowdown(int32 Frames, bool bPersistent, EBaroqueCancelType Kind = EBaroqueCancelType::Blue);
+	/** Madrone change: frames of slowdown left (0 = not slowed), and the kind of Baroque Cancel that caused it. */
+	UFUNCTION(BlueprintPure, Category = "Baroque Cancel")
+	int32 GetSlowdownTimer() const { return SlowdownTimer; }
+	UFUNCTION(BlueprintPure, Category = "Baroque Cancel")
+	EBaroqueCancelType GetSlowdownType() const { return SlowdownType; }
 	// Madrone change: a hit or block ends non-persistent slowdown.
 	void EndNonPersistentSlowdown();
+
+	/** Madrone change: no new Baroque Cancel for this many frames (one just ended). */
+	void StartBaroqueRelock(const int32 Frames) { BaroqueRelockTimer = FMath::Max(BaroqueRelockTimer, Frames); }
 	//handles proximity blocking
 	void HandleProximityBlock();
 	//called right before state changes

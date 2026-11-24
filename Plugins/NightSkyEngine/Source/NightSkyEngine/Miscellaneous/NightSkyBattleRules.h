@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DeveloperSettings.h"
+#include "Materials/MaterialInterface.h"
 #include "NightSkyBattleRules.generated.h"
 
 /**
@@ -57,6 +58,37 @@ public:
 	/** How far the Baroque Cancel shockwave reaches (Night Sky units, about 2326 per cm), across and up. */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Baroque Cancel", meta = (ClampMin = "0"))
 	int32 BaroqueShockwaveRadius = 650000;
+
+	/** A Baroque Cancel pressed in a normal's first frames (that hasn't hit) counts as if the normal never started: Blue,
+	 * or Red while the opponent is still in hit or block stun from the move before. A+C+E pressed a frame or two apart
+	 * fires the first button's normal before the three complete, which would make every sloppy press a Purple. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Baroque Cancel", meta = (ClampMin = "0"))
+	int32 BaroqueKaraFrames = 3;
+
+	/** Presentation only (not rollback state, safe to differ between machines): Baroque Cancel looks. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Baroque Cancel Visuals")
+	bool bBaroqueVisuals = true;
+
+	/** Post-process material that darkens the screen during the freeze, except the fighters (custom stencil). Scalar
+	 * parameters Darkness, FighterStencil; vector Tint. Built by witch_tools_battle.baroque_cancel.build_materials(). */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Baroque Cancel Visuals")
+	TSoftObjectPtr<UMaterialInterface> BaroqueScreenDarkenMaterial = TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(
+		TEXT("/WitchTools/BattleCommon/NightSkyEngine/CharacterAssets/Common/Particles/Materials/M_WitchBaroqueScreenDarken.M_WitchBaroqueScreenDarken")));
+
+	/** Translucent material for afterimages (the spot the cancel started, the drift trail, a slowed fighter's echoes).
+	 * Parameters Color (vector), Opacity (scalar). */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Baroque Cancel Visuals")
+	TSoftObjectPtr<UMaterialInterface> BaroqueAfterimageMaterial = TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(
+		TEXT("/WitchTools/BattleCommon/NightSkyEngine/CharacterAssets/Common/Particles/Materials/M_WitchBaroqueAfterimage.M_WitchBaroqueAfterimage")));
+
+	/** Custom stencil value the fighters are drawn with while the screen is dark (so the darkening skips them). Night Sky's
+	 * particles use 2, the datamosh mask 77, Pepper's ghost silhouettes 201. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Baroque Cancel Visuals", meta = (ClampMin = "1", ClampMax = "255"))
+	int32 BaroqueFighterStencil = 3;
+
+	/** A slowed fighter leaves a fading echo of itself every this many frames (0 = none). */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Baroque Cancel Visuals", meta = (ClampMin = "0"))
+	int32 SlowdownEchoInterval = 5;
 
 	/**
 	 * CPU: chance in percent, per decision, at CPU Difficulty 100 (scaled down with difficulty), that a CPU Baroque

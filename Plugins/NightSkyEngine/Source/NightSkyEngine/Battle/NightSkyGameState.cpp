@@ -2,6 +2,7 @@
 
 
 #include "NightSkyGameState.h"
+#include "NightSkyEngine/Battle/Misc/BaroqueCancelVisuals.h" // Madrone change
 #include "EngineUtils.h"
 #include "Engine/Engine.h"
 #include "LevelSequenceActor.h"
@@ -84,12 +85,15 @@ void ANightSkyGameState::BeginPlay()
 
 	UpdateCamera();
 
+	BaroqueVisuals = NewObject<UBaroqueCancelVisuals>(this); // Madrone change
+
 	Init();
 }
 
 void ANightSkyGameState::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	Super::EndPlay(EndPlayReason);
+	if (BaroqueVisuals) BaroqueVisuals->Reset(); // Madrone change: fighters' stencil back, screen not dark
 	GameInstance->EndRecordReplay();
 }
 
@@ -864,6 +868,7 @@ void ANightSkyGameState::UpdateGameState(int32 Input1, int32 Input2, bool bShoul
 
 	ParticleManager->PauseParticles();
 	UpdateVisuals(bShouldResimulate);
+	if (!bShouldResimulate && BaroqueVisuals) BaroqueVisuals->Update(this); // Madrone change
 	UpdateCamera();
 	UpdateHUD();
 	ManageAudio();
@@ -1743,9 +1748,73 @@ void ANightSkyGameState::UpdateCamera()
 				GetActorRotation();
 
 			SequenceCameraActor->SetActorRotation(SequenceRotation);
+			AvoidSequenceCameraCollision(); // Madrone change: never in the ground or behind a wall
 		}
 	}
 	bIsPlayingSequence = BattleState.IsPlayingSequence;
+}
+
+// Madrone change: sequence camera collision. Docs: WitchTools Docs/BattleCamera.md (Sequence cameras).
+FVector ANightSkyGameState::ResolveCameraCollision(const UObject* WorldContextObject, const FVector& Focus,
+                                                   const FVector& Desired, const float ProbeRadius,
+                                                   const float GroundClearance, const TArray<AActor*>& Ignore)
+{
+	const UWorld* World = GEngine ? GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::ReturnNull) : nullptr;
+	if (!World) return Desired;
+	FCollisionQueryParams Params(TEXT("NSECameraCollision"), false);
+	Params.AddIgnoredActors(Ignore);
+	const FCollisionObjectQueryParams Static(ECC_WorldStatic);
+	FVector Result = Desired;
+
+	// 1. Anything solid between the focus and the camera: stop in front of it.
+	FHitResult Hit;
+	if (World->SweepSingleByObjectType(Hit, Focus, Desired, FQuat::Identity, Static,
+	                                   FCollisionShape::MakeSphere(FMath::Max(1.f, ProbeRadius)), Params))
+	{
+		Result = Hit.bStartPenetrating ? Focus : Hit.Location;
+	}
+
+	// 2. Keep clear of the ground under the camera (a slope can rise right under the end of the sweep).
+	if (GroundClearance > 0.f)
+	{
+		const FVector Top = Result + FVector(0, 0, FMath::Max(300.f, GroundClearance * 4.f));
+		const FVector Bottom = Result - FVector(0, 0, GroundClearance);
+		if (World->LineTraceSingleByObjectType(Hit, Top, Bottom, Static, Params) && !Hit.bStartPenetrating)
+		{
+			Result.Z = FMath::Max(Result.Z, Hit.ImpactPoint.Z + GroundClearance);
+		}
+	}
+	return Result;
+}
+
+void ANightSkyGameState::AvoidSequenceCameraCollision()
+{
+	if (!bSequenceCameraAvoidCollision || !SequenceCameraActor || !IsValid(SequenceTarget))
+	{
+		SequenceCameraPull = FVector::ZeroVector;
+		return;
+	}
+	const FVector Desired = SequenceCameraActor->GetActorLocation();
+	const FVector Focus = SequenceTarget->GetActorLocation() + BattleSceneTransform.GetRotation().GetUpVector() * SequenceCameraFocusHeight;
+	TArray<AActor*> Ignore;
+	for (APlayerObject* Player : Players) if (IsValid(Player)) Ignore.Add(Player);
+	Ignore.Add(SequenceCameraActor);
+	if (CameraActor) Ignore.Add(CameraActor);
+	const FVector Pull = ResolveCameraCollision(this, Focus, Desired, SequenceCameraProbeRadius, SequenceCameraGroundClearance, Ignore) - Desired;
+
+	// In at once, back out smoothly.
+	if (Pull.SizeSquared() >= SequenceCameraPull.SizeSquared())
+	{
+		SequenceCameraPull = Pull;
+	}
+	else
+	{
+		SequenceCameraPull = FMath::VInterpTo(SequenceCameraPull, Pull, GetWorld()->GetDeltaSeconds(), SequenceCameraReleaseSpeed);
+		// Easing out must not leave it in the ground: re-check where the eased camera would be.
+		const FVector Eased = Desired + SequenceCameraPull;
+		SequenceCameraPull = ResolveCameraCollision(this, Focus, Eased, SequenceCameraProbeRadius, SequenceCameraGroundClearance, Ignore) - Desired;
+	}
+	SequenceCameraActor->SetActorLocation(Desired + SequenceCameraPull);
 }
 
 void ANightSkyGameState::PlayLevelSequence(APlayerObject* Target, APlayerObject* Enemy, ULevelSequence* Sequence)
@@ -1809,6 +1878,7 @@ void ANightSkyGameState::PlayLevelSequence(APlayerObject* Target, APlayerObject*
 		SequenceTarget = Target;
 		SequenceEnemy = Enemy;
 		LastScrubbedSequenceTime = -1;
+		SequenceCameraPull = FVector::ZeroVector; // Madrone change
 		BattleState.CurrentSequenceTime = 0;
 		BattleState.IsPlayingSequence = true;
 	}

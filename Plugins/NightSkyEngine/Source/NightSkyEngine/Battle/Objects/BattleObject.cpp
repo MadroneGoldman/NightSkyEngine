@@ -692,6 +692,8 @@ void ABattleObject::HandleHitCollision(ABattleObject* AttackedObj)
 					return;
 				}
 			}
+			// Madrone change: 3rd Strike parry (a fighter with bThirdStrikeParry tapped toward the hit in time).
+			if (AttackedPlayer->TryThirdStrikeParry(this)) return;
 			// flag set here because hitting a parrying opponent doesn't stun them.
 			AttackedPlayer->PlayerFlags |= PLF_IsStunned;			TriggerEvent(EVT_HitOrBlock, StateMachine_Primary);
 			// Madrone change: Baroque Cancel slowdown that isn't persistent ends on either fighter's hit or block.

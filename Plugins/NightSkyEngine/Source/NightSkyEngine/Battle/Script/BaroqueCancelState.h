@@ -85,7 +85,8 @@ struct NIGHTSKYENGINE_API FBaroqueCancelKind
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Baroque Cancel")
 	FLinearColor Color = FLinearColor(1, 0.1f, 0.1f, 1);
 
-	/** Everyone else stands still this long from the press; the fighter doesn't. The shockwave goes off when it ends. */
+	/** Super freeze: everyone else stands still this long from the press (Strive: Blue 20, Red 25, Purple 20, Yellow 12);
+	 * the fighter doesn't (it drifts). When it ends the shockwave goes off and the fighter can act. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Baroque Cancel", meta = (ClampMin = 0))
 	int32 SuperFreezeFrames = 20;
 
@@ -93,7 +94,8 @@ struct NIGHTSKYENGINE_API FBaroqueCancelKind
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Baroque Cancel", meta = (ClampMin = 1))
 	int32 TotalFrames = 45;
 
-	/** An opponent the shockwave reaches runs at half speed this long. */
+	/** Slowdown, separate from (and after) the super freeze: an opponent the shockwave reaches runs at half speed this
+	 * long (Strive: Blue 59, Red 39, Purple 19, Yellow 10). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Baroque Cancel", meta = (ClampMin = 0))
 	int32 SlowdownFrames = 39;
 
@@ -101,12 +103,14 @@ struct NIGHTSKYENGINE_API FBaroqueCancelKind
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Baroque Cancel")
 	bool bPersistentSlowdown = false;
 
-	/** Frames (from the press) during which an attack cancels the Baroque Cancel ("Roman Cancel Cancel"). -1 = never. */
+	/** The fighter can act (attack, move, block, jump) from the first frame after the super freeze: the state ends there.
+	 * Off = it plays out to Total Frames (Yellow's recovery). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Baroque Cancel")
-	int32 CancelWindowStart = 7;
+	bool bActionableAfterFreeze = true;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Baroque Cancel")
-	int32 CancelWindowEnd = 13;
+	/** How dark the screen goes during the super freeze (0 = not at all, 1 = black). The fighters stay lit. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Visual", meta = (ClampMin = 0, ClampMax = 1))
+	float ScreenDarken = 0.6f;
 
 	/** Strike invulnerable from the press this long (Yellow: until the super freeze ends). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Baroque Cancel", meta = (ClampMin = 0))
@@ -195,6 +199,11 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Red Launch")
 	FBaroqueDriftLaunch RedLaunchDown = {42, 40, 50};
+
+	/** After a Baroque Cancel ends, frames before another can start (G or A+C+E mashed at the end of the freeze would
+	 * otherwise start a second one at once). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Baroque Cancel", meta = (ClampMin = 0))
+	int32 RelockFrames = 10;
 
 	/** The kind's numbers. */
 	UFUNCTION(BlueprintPure, Category = "Baroque Cancel")

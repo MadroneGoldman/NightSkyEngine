@@ -4,6 +4,7 @@
 
 #include "NightSkyEngine/Battle/Misc/Bitflags.h"
 #include "NightSkyEngine/Battle/Misc/Globals.h"
+#include "NightSkyEngine/Battle/NightSkyGameState.h"
 #include "NightSkyEngine/Battle/Objects/PlayerObject.h"
 #include "NightSkyEngine/Data/StateData.h"
 #include "NightSkyEngine/Miscellaneous/NightSkyBattleRules.h"
@@ -36,7 +37,8 @@ namespace BaroqueCancel
 UBaroqueCancelState::UBaroqueCancelState()
 {
 	StateType = EStateType::BaroqueCancel;
-	// Strive's Roman Cancel numbers (Dustloop, GGST Mechanics): startup + recovery, super freeze, slowdown, cancel window.
+	// Strive's Roman Cancel numbers (Dustloop, GGST Mechanics): super freeze, total, slowdown. Blue, Red and Purple can act
+	// straight after the freeze; Yellow recovers.
 	Blue.Cel = Cel_BaroqueCancel_Blue;
 	Blue.Particle = Particle_BaroqueCancel_Blue;
 	Blue.Color = FLinearColor(0.15f, 0.45f, 1.f, 1);
@@ -44,8 +46,6 @@ UBaroqueCancelState::UBaroqueCancelState()
 	Blue.TotalFrames = 45;
 	Blue.SlowdownFrames = 59;
 	Blue.bPersistentSlowdown = true;
-	Blue.CancelWindowStart = 5;
-	Blue.CancelWindowEnd = 11;
 
 	Red.Cel = Cel_BaroqueCancel_Red;
 	Red.Particle = Particle_BaroqueCancel_Red;
@@ -53,8 +53,6 @@ UBaroqueCancelState::UBaroqueCancelState()
 	Red.SuperFreezeFrames = 25;
 	Red.TotalFrames = 45;
 	Red.SlowdownFrames = 39;
-	Red.CancelWindowStart = 7;
-	Red.CancelWindowEnd = 13;
 
 	Purple.Cel = Cel_BaroqueCancel_Purple;
 	Purple.Particle = Particle_BaroqueCancel_Purple;
@@ -62,8 +60,6 @@ UBaroqueCancelState::UBaroqueCancelState()
 	Purple.SuperFreezeFrames = 20;
 	Purple.TotalFrames = 45;
 	Purple.SlowdownFrames = 19;
-	Purple.CancelWindowStart = 8;
-	Purple.CancelWindowEnd = 14;
 
 	Yellow.Cel = Cel_BaroqueCancel_Yellow;
 	Yellow.Particle = Particle_BaroqueCancel_Yellow;
@@ -71,9 +67,9 @@ UBaroqueCancelState::UBaroqueCancelState()
 	Yellow.SuperFreezeFrames = 12;
 	Yellow.TotalFrames = 47;
 	Yellow.SlowdownFrames = 10;
-	Yellow.CancelWindowStart = -1;
-	Yellow.CancelWindowEnd = -1;
+	Yellow.bActionableAfterFreeze = false; // 33 frames of recovery after the freeze
 	Yellow.InvulnerableFrames = 12;
+	Yellow.ScreenDarken = 0.45f; // shorter freeze, a lighter dim
 }
 
 FBaroqueCancelKind UBaroqueCancelState::GetKind(const EBaroqueCancelType Type) const
@@ -96,6 +92,9 @@ void UBaroqueCancelState::CallExec()
 		const EBaroqueCancelType Type = Self->GetBaroqueCancelType();
 		const FBaroqueCancelKind Kind = GetKind(Type);
 		const int32 Frame = Parent->ActionTime;
+		// The freeze's last frame (the press is frame 0): the shockwave and the return to neutral happen here, so the
+		// opponent is slowed and the fighter can act from the first frame after the freeze.
+		const int32 LastFreezeFrame = FMath::Max(0, Kind.SuperFreezeFrames - 1);
 
 		if (Frame == 0)
 		{
@@ -116,12 +115,12 @@ void UBaroqueCancelState::CallExec()
 			Parent->AddColor = FLinearColor(Kind.Color.R * 0.15f, Kind.Color.G * 0.15f, Kind.Color.B * 0.15f, 1); // a light flash, not a recolour
 			Parent->AddFadeSpeed = 0.04f;
 			if (Kind.InvulnerableFrames > 0) Self->SetStrikeInvulnerableForTime(Kind.InvulnerableFrames);
-			// Everyone else freezes, the fighter doesn't: it can cancel this during the freeze.
+			// Everyone else freezes, the fighter doesn't (it drifts).
 			if (Kind.SuperFreezeFrames > 0) Parent->StartSuperFreeze(Kind.SuperFreezeFrames, 0);
 			if (Kind.Particle.IsValid()) Parent->CreateGuardParticle(Kind.Particle, Self, -60.f, false);
-			if (Kind.SuperFreezeFrames == 0) Shockwave(Self, Type, Kind);
+			if (LastFreezeFrame == 0) Shockwave(Self, Type, Kind);
 		}
-		else if (Frame == Kind.SuperFreezeFrames)
+		else if (Frame == LastFreezeFrame)
 		{
 			Shockwave(Self, Type, Kind);
 		}
@@ -146,28 +145,33 @@ void UBaroqueCancelState::CallExec()
 			}
 		}
 
-		// Cancel the Baroque Cancel: an attack during the window goes straight into the next move.
-		if (Kind.CancelWindowStart >= 0 && Frame >= Kind.CancelWindowStart && Frame <= Kind.CancelWindowEnd)
-		{
-			Self->EnableAttacks();
-		}
-		else
-		{
-			Self->DisableState(ENB_NormalAttack | ENB_SpecialAttack | ENB_SuperAttack, StateMachine_Primary);
-		}
+		// No attacks during the freeze (a press in its last few frames comes out on the first frame after it).
+		Self->DisableState(ENB_NormalAttack | ENB_SpecialAttack | ENB_SuperAttack, StateMachine_Primary);
 
-		if (Frame >= Kind.TotalFrames)
+		// Blue, Red, Purple: free to act the moment the freeze ends (the shockwave just went off). Yellow recovers first.
+		if ((Kind.bActionableAfterFreeze && Frame >= LastFreezeFrame) || Frame >= Kind.TotalFrames)
 		{
+			Self->StartBaroqueRelock(RelockFrames);
 			// Like the Exit State macro: back to standing / crouching, or falling from the top of a jump.
 			if (Self->PosY > Self->GroundHeight)
 			{
 				Parent->GotoLabel(FGameplayTag::RequestGameplayTag(TEXT("State.Label.Jump.Top")));
 				Self->JumpToState(FGameplayTag::RequestGameplayTag(TEXT("State.Universal.Jump")), StateMachine_Primary, true);
+				// The state change turned everything off and the new state turns it back on only in its own update, after
+				// the input check: on now.
+				Self->EnableAttacks();
+				Self->EnableState(ENB_Jumping | ENB_ForwardAirDash | ENB_BackAirDash, StateMachine_Primary);
 			}
 			else
 			{
 				Self->JumpToStatePrimary(Self->Stance == ACT_Crouching ? State_Universal_Crouch : State_Universal_Stand);
+				Self->EnableAll(StateMachine_Primary);
 			}
+			// Night Sky enters a move the frame after its input is read: read it now (buffered, nothing changes yet), so a
+			// move pressed at the end of the freeze starts on the first frame after it. Only presses within a button's
+			// lenience (3 frames by default) count, like Strive: the extra and released buttons of the Baroque Cancel's own
+			// A+C+E early in the freeze are too old by now. Motions keep their own (longer) step windows.
+			Self->HandleStateMachine(true, Self->PrimaryStateMachine);
 			return;
 		}
 	}
@@ -263,5 +267,5 @@ void UBaroqueCancelState::Shockwave(APlayerObject* Self, const EBaroqueCancelTyp
 	default:
 		break;
 	}
-	if (Kind.SlowdownFrames > 0) Enemy->StartSlowdown(Kind.SlowdownFrames, Kind.bPersistentSlowdown);
+	if (Kind.SlowdownFrames > 0) Enemy->StartSlowdown(Kind.SlowdownFrames, Kind.bPersistentSlowdown, Type);
 }
