@@ -95,7 +95,10 @@ void ANightSkyAIController::Update()
 		// The move's frame stands still in hitstop: deciding (and typing a different motion) every frame of it garbled
 		// the buffer. Decide in its last frames, so the cancel's inputs are fresh when the move goes on.
 		if (Player->Hitstop > 2) return;
-		AvailableStates.RemoveAll([](const UState* State) { return !State->CPUData.bAttack; });
+		AvailableStates.RemoveAll([](const UState* State)
+		{
+			return !State->CPUData.bAttack && State->StateType != EStateType::BaroqueCancel; // Red Baroque Cancel extends a combo
+		});
 		if (AvailableStates.IsEmpty()) return;
 	}
 
@@ -106,7 +109,8 @@ void ANightSkyAIController::Update()
 		UE_LOG(LogTemp, Log, TEXT("CPU %s attacking in %s, frame %d: %d options: %s"), *Player->GetName(),
 		       *Player->GetCurrentStateName(StateMachine_Primary).ToString(), Player->ActionTime, AvailableStates.Num(), *Names);
 	}
-	if (AvailableStates.Num() == 1)
+	// Madrone change: a lone Baroque Cancel is weighed like any other choice, not taken (it was, every block).
+	if (AvailableStates.Num() == 1 && AvailableStates[0]->StateType != EStateType::BaroqueCancel)
 	{
 		ResetParams();
 		TargetState = AvailableStates[0];
@@ -128,7 +132,16 @@ void ANightSkyAIController::Update()
 					BestProjectile = State->Name;
 				}
 			};
-			if (bDefendOnly)
+			if (State->StateType == EStateType::BaroqueCancel) // Madrone change
+			{
+				Weight = BaroqueCancelWeight();
+				if (Weight > MaxWeight)
+				{
+					MaxWeight = Weight;
+					CurState = State;
+				}
+			}
+			else if (bDefendOnly)
 			{
 				if (!State->CPUData.bAttack)
 				{
@@ -384,6 +397,27 @@ int32 ANightSkyAIController::CheckBasicWeight(const UState* State) const
 	Weight += GameState->BattleState.RandomManager.RandRange(-50, 50);
 
 	return Weight;
+}
+
+int32 ANightSkyAIController::BaroqueCancelWeight() const
+{
+	// Madrone change: a Baroque Cancel when it's worth it, more often the higher the difficulty: Red after the CPU's
+	// attack hit (extends the combo), Yellow (half as often) while blocking. Never Blue or Purple for now.
+	const UNightSkyBattleRules* Rules = GetDefault<UNightSkyBattleRules>();
+	const int32 Roll = GameState->BattleState.RandomManager.RandRange(0, 99);
+	int32 Chance = Rules->CPUBaroqueChance * FMath::Clamp(Player->CPUDifficulty, 0, 100) / 100;
+	switch (Player->WorkOutBaroqueCancelType())
+	{
+	case EBaroqueCancelType::Red:
+		if (!Player->Enemy->CheckIsStunned() || Player->IsEnemyBlocking()) return 0;
+		break;
+	case EBaroqueCancelType::Yellow:
+		Chance /= 2;
+		break;
+	default:
+		return 0;
+	}
+	return Roll < Chance ? 500 : 0;
 }
 
 int32 ANightSkyAIController::PatienceShift() const

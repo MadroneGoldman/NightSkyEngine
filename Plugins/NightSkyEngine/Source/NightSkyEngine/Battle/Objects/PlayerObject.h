@@ -7,6 +7,7 @@
 #include "NativeGameplayTags.h"
 #include "NightSkyEngine/Battle/Misc/InputBuffer.h"
 #include "NightSkyEngine/Battle/Script/State.h"
+#include "NightSkyEngine/Battle/Script/BaroqueCancelState.h" // Madrone change
 #include "NightSkyEngine/Battle/Script/StateMachine.h"
 #include "NightSkyEngine/Data/CollisionData.h"
 #include "NightSkyEngine/Data/SequenceData.h"
@@ -321,6 +322,10 @@ protected:
 	// held on the last update (to find the press).
 	int32 FramesSinceBackPress = INT_MAX;
 	bool bBackHeldLastFrame = false;
+	// Madrone change: Baroque Cancel. The kind picked when it was pressed, and slowdown (half speed) from an opponent's.
+	EBaroqueCancelType BaroqueCancelType = EBaroqueCancelType::Blue;
+	int32 SlowdownTimer = 0;
+	bool bSlowdownPersistent = false;
 	uint32 MeterCooldownTimer = 0;
 	int32 ThrowRange = 0;
 	int32 ThrowTechTimer = 0;
@@ -586,6 +591,20 @@ public:
 	void ApplyJustDefend();
 	// Madrone change: tracks back presses for Just Defend. Call once per update, after the inputs are flipped.
 	void UpdateJustDefendInput();
+	// Madrone change: Baroque Cancel (a Roman Cancel). Whether one can start now: not while hit, knocked down, thrown or
+	// already in one. Its cost (recoverable health) is the state's Recoverable Health Not Zero condition.
+	bool CanBaroqueCancel() const;
+	// Madrone change: which Baroque Cancel this fighter gets from what it's doing now (see EBaroqueCancelType).
+	EBaroqueCancelType WorkOutBaroqueCancelType() const;
+	/** Madrone change: the kind of the Baroque Cancel this fighter is in (or did last). */
+	UFUNCTION(BlueprintPure, Category = "Baroque Cancel")
+	EBaroqueCancelType GetBaroqueCancelType() const { return BaroqueCancelType; }
+	/** Madrone change: run at half speed for Frames. Persistent slowdown lasts through hits and blocks; otherwise either
+	 * fighter's next hit or block ends it. A longer slowdown already running is kept. */
+	UFUNCTION(BlueprintCallable, Category = "Baroque Cancel")
+	void StartSlowdown(int32 Frames, bool bPersistent);
+	// Madrone change: a hit or block ends non-persistent slowdown.
+	void EndNonPersistentSlowdown();
 	//handles proximity blocking
 	void HandleProximityBlock();
 	//called right before state changes

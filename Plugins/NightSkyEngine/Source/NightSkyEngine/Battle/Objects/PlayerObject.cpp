@@ -383,6 +383,9 @@ bool APlayerObject::HandleStateTransition(int32 StateIndex, bool Buffer, FStateM
 		|| CancelFlags & CNC_CancelIntoSelf
 		|| FindBaroqueCancelOption(StateMachine.States[StateIndex], StateMachine) ) //if cancel option, allow resetting state
 	{
+		// Madrone change: a Baroque Cancel's kind comes from what the fighter is doing as it's pressed.
+		if (StateMachine.States[StateIndex]->StateType == EStateType::BaroqueCancel)
+			BaroqueCancelType = WorkOutBaroqueCancelType();
 		if (Buffer)
 		{
 			BufferedStateName = StateMachine.States[StateIndex]->Name;
@@ -469,6 +472,14 @@ void APlayerObject::Update()
 		{
 			RoundEndFlag = true;
 		}
+	}
+
+	// Madrone change: Baroque Cancel slowdown. Half speed: every other frame stands still, like a frame of hitstop.
+	if (SlowdownTimer > 0)
+	{
+		SlowdownTimer--;
+		if ((SlowdownTimer & 1) && Hitstop == 0) Hitstop = 1;
+		if (SlowdownTimer == 0) bSlowdownPersistent = false;
 	}
 
 	Super::Update();
@@ -1924,6 +1935,46 @@ void APlayerObject::ApplyJustDefend()
 	CallSubroutines(Witch_Subroutine_OnJustDefend);
 }
 
+// Madrone change: Baroque Cancel (a Roman Cancel)
+bool APlayerObject::CanBaroqueCancel() const
+{
+	if (PlayerFlags & (PLF_IsDead | PLF_IsThrowLock | PLF_IsKnockedDown)) return false;
+	if (!PrimaryStateMachine.CurrentState) return false;
+	const EStateType Current = PrimaryStateMachine.CurrentState->StateType;
+	// Not while being hit (that's a burst's job), and not again while already in one.
+	const bool bTraining = GameState && GameState->GameInstance && GameState->GameInstance->IsTraining; // free in training
+	return Current != EStateType::Hitstun && Current != EStateType::BaroqueCancel && (RecoverableHealth > 0 || bTraining);
+}
+
+EBaroqueCancelType APlayerObject::WorkOutBaroqueCancelType() const
+{
+	const EStateType Current = PrimaryStateMachine.CurrentState ? PrimaryStateMachine.CurrentState->StateType : EStateType::Standing;
+	if (Current == EStateType::Blockstun) return EBaroqueCancelType::Yellow;
+	const bool bAttacking = (AttackFlags & ATK_IsAttacking)
+		|| (Current >= EStateType::NormalAttack && Current <= EStateType::SuperAttack);
+	if (bAttacking) return (AttackFlags & ATK_HasHit) ? EBaroqueCancelType::Red : EBaroqueCancelType::Purple;
+	return EBaroqueCancelType::Blue;
+}
+
+void APlayerObject::StartSlowdown(const int32 Frames, const bool bPersistent)
+{
+	if (Frames <= 0) return;
+	if (Frames >= SlowdownTimer)
+	{
+		SlowdownTimer = Frames;
+		bSlowdownPersistent = bPersistent;
+	}
+	else
+	{
+		bSlowdownPersistent |= bPersistent;
+	}
+}
+
+void APlayerObject::EndNonPersistentSlowdown()
+{
+	if (!bSlowdownPersistent) SlowdownTimer = 0;
+}
+
 bool APlayerObject::IsCorrectBlock(EBlockType BlockType)
 {
 	CallSubroutine(Subroutine_Cmn_IsCorrectBlock);
@@ -2253,7 +2304,8 @@ bool APlayerObject::HandleStateCondition(EStateCondition StateCondition) const
 			return true;
 		break;
 	case EStateCondition::RecoverableHealthNotZero:
-		if (RecoverableHealth > 0)
+		// Madrone change: training refills health (and empties recoverable health) every frame: Baroque Cancel is free there.
+		if (RecoverableHealth > 0 || (GameState && GameState->GameInstance && GameState->GameInstance->IsTraining))
 			return true;
 		break;
 	case EStateCondition::PlayerReg1True:
@@ -2817,6 +2869,13 @@ bool APlayerObject::JumpToState(FGameplayTag NewName, FGameplayTag StateMachineN
 	if (!GameState && !CharaSelectGameState) return false;
 	GotoLabelActive = IsLabel;
 	FStateMachine& StateMachine = GetStateMachine(StateMachineName);
+	// Madrone change: a Baroque Cancel jumped to (by a state, a sequence or a test) gets its kind like a pressed one.
+	if (const int32 Index = StateMachine.GetStateIndex(NewName); !IsLabel && StateMachine.States.IsValidIndex(Index)
+		&& StateMachine.States[Index]->StateType == EStateType::BaroqueCancel && StateMachine.CurrentState
+		&& StateMachine.CurrentState->StateType != EStateType::BaroqueCancel)
+	{
+		BaroqueCancelType = WorkOutBaroqueCancelType();
+	}
 	if (StateMachine.ForceSetState(NewName) && StateMachine.CurrentState != nullptr)
 	{
 		switch (StateMachine.CurrentState->EntryStance)
@@ -2990,9 +3049,8 @@ bool APlayerObject::CheckStateEnabled(EStateType StateType, FGameplayTag CustomS
 			return true;
 		break;
 	case EStateType::BaroqueCancel:
-		//if (GetEnableFlags(StateMachineName) & ENB_Baroque) //Madrone change
-		return true;
-		//break;
+		// Madrone change: universal, a Roman Cancel: from anything but being hit (see CanBaroqueCancel).
+		return CanBaroqueCancel();
 	case EStateType::Custom:
 		if (GetStateMachine(StateMachineName).EnabledCustomStateTypes.Contains(CustomStateType))
 			return true;
@@ -3355,6 +3413,8 @@ void APlayerObject::RoundInit(bool ResetHealth)
 	InstantBlockLockoutTimer = 0;
 	FramesSinceBackPress = INT_MAX; // Madrone change: Just Defend
 	bBackHeldLastFrame = false;
+	SlowdownTimer = 0; // Madrone change: Baroque Cancel
+	bSlowdownPersistent = false;
 	MeterCooldownTimer = 0;
 	for (auto& LinkActor : StoredLinkActors)
 	{

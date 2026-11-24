@@ -1267,7 +1267,7 @@ public:
 	 * centre to where the boxes met, always on this object's side) and ScreenSpaceDepthOffset.
 	 */
 	UFUNCTION(BlueprintCallable)
-	void CreateGuardParticle(FGameplayTag Name, APlayerObject* Blocker);
+	void CreateGuardParticle(FGameplayTag Name, APlayerObject* Blocker, float TowardCamera = 25.f, bool bTiltByHitAngle = true);
 	//creates character particle
 	UFUNCTION(BlueprintCallable)
 	void CreateCharaParticle(FGameplayTag Name, EPosType PosType, FVector Offset = FVector::ZeroVector,

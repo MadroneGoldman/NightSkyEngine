@@ -694,6 +694,9 @@ void ABattleObject::HandleHitCollision(ABattleObject* AttackedObj)
 			}
 			// flag set here because hitting a parrying opponent doesn't stun them.
 			AttackedPlayer->PlayerFlags |= PLF_IsStunned;			TriggerEvent(EVT_HitOrBlock, StateMachine_Primary);
+			// Madrone change: Baroque Cancel slowdown that isn't persistent ends on either fighter's hit or block.
+			AttackedPlayer->EndNonPersistentSlowdown();
+			if (Player) Player->EndNonPersistentSlowdown();
 			if (AttackedPlayer->IsMainPlayer())
 			{
 				TriggerEvent(EVT_HitOrBlockMainPlayer, StateMachine_Primary);
@@ -3466,7 +3469,7 @@ void ABattleObject::CreateCommonParticle(FGameplayTag Name, EPosType PosType, FV
 }
 
 // Madrone change: guard effects, mirrored by side (see the header).
-void ABattleObject::CreateGuardParticle(FGameplayTag Name, APlayerObject* Blocker)
+void ABattleObject::CreateGuardParticle(FGameplayTag Name, APlayerObject* Blocker, float TowardCamera, bool bTiltByHitAngle)
 {
 	if (!GameState || !Player || !Player->CommonParticleData || !IsValid(Blocker)) return;
 	UNiagaraSystem* System = nullptr;
@@ -3502,10 +3505,10 @@ void ABattleObject::CreateGuardParticle(FGameplayTag Name, APlayerObject* Blocke
 	ImpactLocal = ImpactLocal.GetSafeNormal();
 
 	const FQuat SceneRotation = GameState->BattleSceneTransform.GetRotation();
-	// A little toward the camera (+Y), so the effect draws over both fighters' bodies.
-	const FVector Location = SceneRotation.RotateVector(CenterLocal + FVector(0, 25, 0)) + GameState->BattleSceneTransform.GetLocation();
+	// A little toward the camera (+Y), so the effect draws over both fighters' bodies (negative: behind them).
+	const FVector Location = SceneRotation.RotateVector(CenterLocal + FVector(0, TowardCamera, 0)) + GameState->BattleSceneTransform.GetLocation();
 	// Yaw turns local +X toward the attacker. Pitch is the same on both sides: with the yaw, that mirrors it.
-	const FRotator Rotation = (SceneRotation * FRotator(-HitCommon.HitAngle, Facing > 0 ? 0.f : 180.f, 0).Quaternion()).Rotator();
+	const FRotator Rotation = (SceneRotation * FRotator(bTiltByHitAngle ? -HitCommon.HitAngle : 0, Facing > 0 ? 0.f : 180.f, 0).Quaternion()).Rotator();
 
 	UNiagaraComponent* NiagaraComponent = UNiagaraFunctionLibrary::SpawnSystemAtLocation(
 		this, System, Location, Rotation, FVector(Scale));

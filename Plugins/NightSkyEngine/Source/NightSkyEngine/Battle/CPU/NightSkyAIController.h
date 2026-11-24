@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -56,6 +56,8 @@ public:
 	int32 CheckAttackWeight(const UState* State) const;
 	// Madrone change: weight added to waiting / backing off (taken from approaching / neutral attacks) for the fighter's CPU Patience.
 	int32 PatienceShift() const;
+	// Madrone change: weight for a Baroque Cancel (0 or a lot), see Battle Rules > CPU Baroque Chance.
+	int32 BaroqueCancelWeight() const;
 	UFUNCTION(BlueprintCallable)
 	int32 CheckDefenseWeight(const UState* State);
 };

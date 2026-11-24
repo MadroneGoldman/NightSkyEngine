@@ -48,6 +48,24 @@ public:
 	int32 JustDefendRecoverableHeal = 250;
 
 	/**
+	 * Baroque Cancel (a Guilty Gear -Strive- Roman Cancel, UBaroqueCancelState): recoverable health it costs. It can't be
+	 * started without any; with less than this it takes what's left.
+	 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Baroque Cancel", meta = (ClampMin = "0"))
+	int32 BaroqueCancelCost = 2000;
+
+	/** How far the Baroque Cancel shockwave reaches (Night Sky units, about 2326 per cm), across and up. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Baroque Cancel", meta = (ClampMin = "0"))
+	int32 BaroqueShockwaveRadius = 650000;
+
+	/**
+	 * CPU: chance in percent, per decision, at CPU Difficulty 100 (scaled down with difficulty), that a CPU Baroque
+	 * Cancels when it's worth it: Red after its attack hit (to extend the combo), Yellow (half as often) while blocking.
+	 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CPU", meta = (ClampMin = "0", ClampMax = "100"))
+	int32 CPUBaroqueChance = 30;
+
+	/**
 	 * CPU: how far away (engine units, about 2326 per cm) the enemy must be for a projectile move (CPU Data > Projectile)
 	 * to get the far-away bonus. The move's own CPU Data X/Y range must also contain the enemy.
 	 */
