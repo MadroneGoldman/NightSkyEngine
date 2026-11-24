@@ -82,6 +82,13 @@ public:
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CPU", meta = (ClampMin = "0"))
 	int32 CPUCancelBonus = 150;
 
+	/**
+	 * CPU: weight a fully patient (100) or fully impatient (0) fighter moves between waiting / backing off / backdashing
+	 * and approaching / attacking in neutral. A fighter's CPU Patience 50 changes nothing; 0 turns it off for everyone.
+	 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CPU", meta = (ClampMin = "0"))
+	int32 CPUPatienceStrength = 60;
+
 	virtual FName GetContainerName() const override { return TEXT("Project"); }
 	virtual FName GetCategoryName() const override { return TEXT("Night Sky Engine"); }
 };

@@ -54,6 +54,8 @@ public:
 	int32 CheckBasicWeight(const UState* State) const;
 	UFUNCTION(BlueprintCallable)
 	int32 CheckAttackWeight(const UState* State) const;
+	// Madrone change: weight added to waiting / backing off (taken from approaching / neutral attacks) for the fighter's CPU Patience.
+	int32 PatienceShift() const;
 	UFUNCTION(BlueprintCallable)
 	int32 CheckDefenseWeight(const UState* State);
 };

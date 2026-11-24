@@ -354,9 +354,43 @@ int32 ANightSkyAIController::CheckBasicWeight(const UState* State) const
 		break;
 	}
 
+	// Madrone change: patience. Patient fighters wait, walk back (blocking) and backdash (more so up close, for space);
+	// impatient ones walk, dash and jump in.
+	if (const int32 Shift = PatienceShift(); Shift != 0)
+	{
+		switch (State->StateType)
+		{
+		case EStateType::Standing:
+		case EStateType::Crouching:
+		case EStateType::BackwardWalk:
+			Weight += Shift;
+			break;
+		case EStateType::BackwardDash:
+			Weight += Shift;
+			if (GetEnemyDistanceX() < 300000) Weight += Shift / 2;
+			break;
+		case EStateType::ForwardWalk:
+		case EStateType::ForwardDash:
+		case EStateType::ForwardJump:
+		case EStateType::ForwardAirDash:
+			Weight -= Shift;
+			break;
+		default:
+			break;
+		}
+	}
+
 	Weight += GameState->BattleState.RandomManager.RandRange(-50, 50);
-	
+
 	return Weight;
+}
+
+int32 ANightSkyAIController::PatienceShift() const
+{
+	// Madrone change: + for a patient fighter, - for an impatient one, 0 at CPU Patience 50. No random roll, so the
+	// CPU's random sequence is the same at any patience.
+	const int32 Strength = GetDefault<UNightSkyBattleRules>()->CPUPatienceStrength;
+	return Strength * (FMath::Clamp(Player->CPUPatience, 0, 100) - 50) / 50;
 }
 
 int32 ANightSkyAIController::CheckAttackWeight(const UState* State) const
@@ -472,6 +506,10 @@ int32 ANightSkyAIController::CheckAttackWeight(const UState* State) const
 		}
 
 		if (State->CPUData.bInvuln) Weight += GameState->BattleState.RandomManager.RandRange(15, 40);
+
+		// Madrone change: patience. Starting an attack in neutral (not a cancel, combo, punish or pressure on a blocking
+		// enemy) is less likely for a patient fighter, more for an impatient one.
+		if (!Player->CheckIsAttacking() && !Player->Enemy->IsEnemyAttackState()) Weight -= PatienceShift();
 	}
 	Weight += GameState->BattleState.RandomManager.RandRange(-50, 50);
 	

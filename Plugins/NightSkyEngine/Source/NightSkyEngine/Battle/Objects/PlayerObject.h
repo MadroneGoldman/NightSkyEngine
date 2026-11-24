@@ -366,6 +366,15 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="CPU", meta=(ClampMin="0", ClampMax="100"))
 	int32 CPUDifficulty = 50;
 
+	/**
+	 * Madrone change: how patient this fighter is when a CPU controls it, 0-100. Above 50 it waits, walks back (blocking)
+	 * and backdashes for space more, and approaches and starts attacks in neutral less; below 50 the other way round.
+	 * 50 plays like the stock NSE CPU; the default, 65, is a little more patient. Combos, cancels, punishes and defending aren't affected. Strength: Battle Rules >
+	 * CPU Patience Strength. Set on the character Blueprint, or per NPC on its Witch Battle component. Not rollback state.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="CPU", meta=(ClampMin="0", ClampMax="100"))
+	int32 CPUPatience = 65;
+
 	/** Madrone change: the Just Defend window this fighter gets: its override (or the Battle Rules one) plus its bonus. */
 	UFUNCTION(BlueprintPure, Category="Just Defend")
 	int32 GetJustDefendWindow() const;
