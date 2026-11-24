@@ -326,6 +326,8 @@ protected:
 	EBaroqueCancelType BaroqueCancelType = EBaroqueCancelType::Blue;
 	int32 SlowdownTimer = 0;
 	bool bSlowdownPersistent = false;
+	// Madrone change: the Baroque Cancel's drift direction, picked with its kind.
+	EBaroqueDrift BaroqueDrift = EBaroqueDrift::None;
 	uint32 MeterCooldownTimer = 0;
 	int32 ThrowRange = 0;
 	int32 ThrowTechTimer = 0;
@@ -599,6 +601,12 @@ public:
 	/** Madrone change: the kind of the Baroque Cancel this fighter is in (or did last). */
 	UFUNCTION(BlueprintPure, Category = "Baroque Cancel")
 	EBaroqueCancelType GetBaroqueCancelType() const { return BaroqueCancelType; }
+	// Madrone change: the drift for a Baroque Cancel starting now: a dash (the state's dash button or a double tap) just
+	// before it, in a cardinal direction. None for Yellow and diagonals.
+	EBaroqueDrift WorkOutBaroqueDrift(const UState* BaroqueState);
+	/** Madrone change: the drift of the Baroque Cancel this fighter is in (or did last). */
+	UFUNCTION(BlueprintPure, Category = "Baroque Cancel")
+	EBaroqueDrift GetBaroqueDrift() const { return BaroqueDrift; }
 	/** Madrone change: run at half speed for Frames. Persistent slowdown lasts through hits and blocks; otherwise either
 	 * fighter's next hit or block ends it. A longer slowdown already running is kept. */
 	UFUNCTION(BlueprintCallable, Category = "Baroque Cancel")

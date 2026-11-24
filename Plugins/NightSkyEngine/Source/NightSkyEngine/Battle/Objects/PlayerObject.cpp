@@ -385,7 +385,10 @@ bool APlayerObject::HandleStateTransition(int32 StateIndex, bool Buffer, FStateM
 	{
 		// Madrone change: a Baroque Cancel's kind comes from what the fighter is doing as it's pressed.
 		if (StateMachine.States[StateIndex]->StateType == EStateType::BaroqueCancel)
+		{
 			BaroqueCancelType = WorkOutBaroqueCancelType();
+			BaroqueDrift = WorkOutBaroqueDrift(StateMachine.States[StateIndex]);
+		}
 		if (Buffer)
 		{
 			BufferedStateName = StateMachine.States[StateIndex]->Name;
@@ -1936,6 +1939,13 @@ void APlayerObject::ApplyJustDefend()
 }
 
 // Madrone change: Baroque Cancel (a Roman Cancel)
+#if !UE_BUILD_SHIPPING
+static TAutoConsoleVariable<int32> CVarBaroqueCancelFree(
+	TEXT("ns.BaroqueCancel.Free"), 0,
+	TEXT("Testing only: 1 lets Baroque Cancel start without recoverable health (as in training). Set it before a match ")
+	TEXT("and leave it: changing it mid-match isn't rollback-safe."));
+#endif
+
 bool APlayerObject::CanBaroqueCancel() const
 {
 	if (PlayerFlags & (PLF_IsDead | PLF_IsThrowLock | PLF_IsKnockedDown)) return false;
@@ -1943,7 +1953,11 @@ bool APlayerObject::CanBaroqueCancel() const
 	const EStateType Current = PrimaryStateMachine.CurrentState->StateType;
 	// Not while being hit (that's a burst's job), and not again while already in one.
 	const bool bTraining = GameState && GameState->GameInstance && GameState->GameInstance->IsTraining; // free in training
-	return Current != EStateType::Hitstun && Current != EStateType::BaroqueCancel && (RecoverableHealth > 0 || bTraining);
+	bool bFree = bTraining;
+#if !UE_BUILD_SHIPPING
+	bFree |= CVarBaroqueCancelFree.GetValueOnGameThread() != 0;
+#endif
+	return Current != EStateType::Hitstun && Current != EStateType::BaroqueCancel && (RecoverableHealth > 0 || bFree);
 }
 
 EBaroqueCancelType APlayerObject::WorkOutBaroqueCancelType() const
@@ -1954,6 +1968,65 @@ EBaroqueCancelType APlayerObject::WorkOutBaroqueCancelType() const
 		|| (Current >= EStateType::NormalAttack && Current <= EStateType::SuperAttack);
 	if (bAttacking) return (AttackFlags & ATK_HasHit) ? EBaroqueCancelType::Red : EBaroqueCancelType::Purple;
 	return EBaroqueCancelType::Blue;
+}
+
+EBaroqueDrift APlayerObject::WorkOutBaroqueDrift(const UState* BaroqueState)
+{
+	const UBaroqueCancelState* Baroque = Cast<UBaroqueCancelState>(BaroqueState);
+	if (!Baroque || BaroqueCancelType == EBaroqueCancelType::Yellow) return EBaroqueDrift::None;
+
+	// Inputs here are facing-relative: right is forward.
+	const int32 Lenience = FMath::Max(1, Baroque->DriftInputFrames);
+	auto Pressed = [&](const int32 Flag, const EInputMethod Method, const int32 InLenience)
+	{
+		FInputCondition Condition;
+		Condition.Method = Method;
+		FInputBitmask Bitmask(static_cast<EInputFlags>(Flag));
+		Bitmask.Lenience = InLenience;
+		Condition.Sequence.Add(Bitmask);
+		return CheckInput(Condition);
+	};
+	auto DoubleTap = [&](const int32 Dir)
+	{
+		FInputCondition Condition;
+		FInputBitmask First(static_cast<EInputFlags>(Dir));
+		FInputBitmask Gap(INP_Neutral);
+		FInputBitmask Second(static_cast<EInputFlags>(Dir));
+		Second.Lenience = Lenience;
+		Condition.Sequence = {First, Gap, Second};
+		return CheckInput(Condition);
+	};
+	auto FromDirection = [](const bool bUp, const bool bDown, const bool bBack, const bool bForward)
+	{
+		const bool bVertical = bUp != bDown;
+		const bool bHorizontal = bBack != bForward;
+		if (bVertical && bHorizontal) return EBaroqueDrift::None; // diagonals are ignored
+		if (bVertical) return bUp ? EBaroqueDrift::Up : EBaroqueDrift::Down;
+		if (bHorizontal) return bBack ? EBaroqueDrift::Back : EBaroqueDrift::Forward;
+		return EBaroqueDrift::Forward; // neutral + dash
+	};
+
+	if (Baroque->DriftDashButton != 0 && Pressed(Baroque->DriftDashButton, EInputMethod::PositiveEdge, Lenience))
+	{
+		// The direction held now, from the buffer (facing-relative).
+		return FromDirection(Pressed(INP_Up, EInputMethod::Normal, 1), Pressed(INP_Down, EInputMethod::Normal, 1),
+		                     Pressed(INP_Left, EInputMethod::Normal, 1), Pressed(INP_Right, EInputMethod::Normal, 1));
+	}
+	// A dash that just started (a double tap or the dash button): that way. A long run isn't a drift.
+	switch (PrimaryStateMachine.CurrentState && ActionTime <= Lenience ? PrimaryStateMachine.CurrentState->StateType : EStateType::Standing)
+	{
+	case EStateType::ForwardDash:
+	case EStateType::ForwardAirDash: return EBaroqueDrift::Forward;
+	case EStateType::BackwardDash:
+	case EStateType::BackwardAirDash: return EBaroqueDrift::Back;
+	default: break;
+	}
+
+	if (DoubleTap(INP_Right)) return EBaroqueDrift::Forward;
+	if (DoubleTap(INP_Left)) return EBaroqueDrift::Back;
+	if (DoubleTap(INP_Up)) return EBaroqueDrift::Up;
+	if (DoubleTap(INP_Down)) return EBaroqueDrift::Down;
+	return EBaroqueDrift::None;
 }
 
 void APlayerObject::StartSlowdown(const int32 Frames, const bool bPersistent)
@@ -2307,6 +2380,9 @@ bool APlayerObject::HandleStateCondition(EStateCondition StateCondition) const
 		// Madrone change: training refills health (and empties recoverable health) every frame: Baroque Cancel is free there.
 		if (RecoverableHealth > 0 || (GameState && GameState->GameInstance && GameState->GameInstance->IsTraining))
 			return true;
+#if !UE_BUILD_SHIPPING
+		if (CVarBaroqueCancelFree.GetValueOnGameThread() != 0) return true;
+#endif
 		break;
 	case EStateCondition::PlayerReg1True:
 		return PlayerReg1 != 0;
@@ -2875,6 +2951,7 @@ bool APlayerObject::JumpToState(FGameplayTag NewName, FGameplayTag StateMachineN
 		&& StateMachine.CurrentState->StateType != EStateType::BaroqueCancel)
 	{
 		BaroqueCancelType = WorkOutBaroqueCancelType();
+		BaroqueDrift = WorkOutBaroqueDrift(StateMachine.States[Index]);
 	}
 	if (StateMachine.ForceSetState(NewName) && StateMachine.CurrentState != nullptr)
 	{

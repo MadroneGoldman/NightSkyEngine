@@ -106,8 +106,12 @@ void UBaroqueCancelState::CallExec()
 			// Out of blockstun (Yellow): otherwise the stun running out sends the fighter to standing, mid-cancel.
 			Self->StunTime = 0;
 			Self->PlayerFlags &= ~PLF_IsStunned;
+			// Out of an air dash: its timer would keep the fighter at one height (no drift up or down).
+			Self->AirDashTimer = 0;
 			Parent->SetAttacking(false);
 			Parent->EnableHit(false);
+			// Landing mid-cancel (a drift down, an air cancel) doesn't end it: it ends standing instead.
+			Self->SetDefaultLandingAction(false);
 			Parent->SetCelName(Kind.Cel);
 			Parent->AddColor = FLinearColor(Kind.Color.R * 0.15f, Kind.Color.G * 0.15f, Kind.Color.B * 0.15f, 1); // a light flash, not a recolour
 			Parent->AddFadeSpeed = 0.04f;
@@ -120,6 +124,26 @@ void UBaroqueCancelState::CallExec()
 		else if (Frame == Kind.SuperFreezeFrames)
 		{
 			Shockwave(Self, Type, Kind);
+		}
+
+		// Drift: move the way the fighter dashed, slowing to a stop (no gravity in here: HaltMomentum).
+		if (const EBaroqueDrift Drift = Self->GetBaroqueDrift(); Drift != EBaroqueDrift::None && Frame >= 1)
+		{
+			const int32 Frames = FMath::Max(1, DriftFrames);
+			if (Frame <= Frames)
+			{
+				const int32 Left = Frames - Frame + 1;
+				const int32 SpeedX = DriftSpeedX * Left / Frames;
+				const int32 SpeedY = DriftSpeedY * Left / Frames;
+				Parent->SpeedX = Drift == EBaroqueDrift::Forward ? SpeedX : Drift == EBaroqueDrift::Back ? -SpeedX : 0;
+				Parent->SpeedY = Drift == EBaroqueDrift::Up ? SpeedY
+					                 : Drift == EBaroqueDrift::Down && Self->PosY > Self->GroundHeight ? -SpeedY : 0;
+			}
+			else if (Frame == Frames + 1)
+			{
+				Parent->SpeedX = 0;
+				Parent->SpeedY = 0;
+			}
 		}
 
 		// Cancel the Baroque Cancel: an attack during the window goes straight into the next move.
@@ -192,11 +216,21 @@ void UBaroqueCancelState::Shockwave(APlayerObject* Self, const EBaroqueCancelTyp
 		if (bEnemyHit)
 		{
 			// Launches, hard knockdown.
-			ShockwaveHit(HACT_AirNormal, HACT_AirNormal, [this](FHitData& Hit)
+			// After a drift the launch changes (Strive): forward lower and farther, up much higher, and so on.
+			FBaroqueDriftLaunch Launch(RedLaunchUntech, 100, 100);
+			switch (Self->GetBaroqueDrift())
 			{
-				Hit.Untech = RedLaunchUntech;
-				Hit.AirPushbackX = RedLaunchSpeedX;
-				Hit.AirPushbackY = RedLaunchSpeedY;
+			case EBaroqueDrift::Forward: Launch = RedLaunchForward; break;
+			case EBaroqueDrift::Back: Launch = RedLaunchBack; break;
+			case EBaroqueDrift::Up: Launch = RedLaunchUp; break;
+			case EBaroqueDrift::Down: Launch = RedLaunchDown; break;
+			default: break;
+			}
+			ShockwaveHit(HACT_AirNormal, HACT_AirNormal, [this, Launch](FHitData& Hit)
+			{
+				Hit.Untech = Launch.Untech;
+				Hit.AirPushbackX = RedLaunchSpeedX * Launch.SpeedXPercent / 100;
+				Hit.AirPushbackY = RedLaunchSpeedY * Launch.SpeedYPercent / 100;
 				Hit.HardKnockdown = 1;
 			});
 		}
