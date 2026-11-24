@@ -744,8 +744,12 @@ void APlayerObject::Update()
 				JumpToStatePrimary(State_Universal_AirBlockEnd);
 			}
 		}
-		else if (PosY == GroundHeight && PrevPosY == GroundHeight 
-			&& GetCurrentStateName(StateMachine_Primary) != State_Universal_Crumple 
+		// Madrone change: on a battle floor that follows the ground, a fighter pushed down a slope in a ground hitstun is
+		// lifted and landed again by the floor most frames, so its previous height is rarely the ground's. Hitstun then
+		// ended "in the air": it stayed in hitstun with tech enabled, and a CPU ground-teched while standing.
+		else if (PosY == GroundHeight
+			&& (PrevPosY == GroundHeight || (GameState && GameState->HasBattleFloor() && Stance != ACT_Jumping))
+			&& GetCurrentStateName(StateMachine_Primary) != State_Universal_Crumple
 			&& GetCurrentStateName(StateMachine_Primary) != State_Universal_FaceDownBounce
 			&& GetCurrentStateName(StateMachine_Primary) != State_Universal_FaceUpBounce
 			&& GetCurrentStateName(StateMachine_Primary) != State_Universal_FaceDownLoop 

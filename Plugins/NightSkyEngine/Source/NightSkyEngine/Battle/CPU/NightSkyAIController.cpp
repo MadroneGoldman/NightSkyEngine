@@ -71,6 +71,7 @@ void ANightSkyAIController::Update()
 	TArray<UState*> AvailableStates{};
 	for (auto State : Player->PrimaryStateMachine.States)
 	{
+		if (!State->bCPUUsable) continue; // Madrone change: the state's "CPU usable" flag was never read
 		if (!Player->CanEnterState(State, StateMachine_Primary)) continue;
 		AvailableStates.Add(State);
 	}
