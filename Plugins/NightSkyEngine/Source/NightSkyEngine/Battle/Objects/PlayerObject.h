@@ -358,6 +358,14 @@ public:
 	/** Madrone change: frames added to the Just Defend window (battle equipment adds its bonus here). Same rule: set before the match. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Just Defend", meta=(ClampMin="0", ClampMax="30"))
 	int32 JustDefendWindowBonus = 0;
+	/**
+	 * Madrone change: how well this fighter plays when a CPU controls it, 0-100. Higher cancels attacks into their cancel
+	 * options (chains, specials, supers) more often and sooner. 0 plays like the stock NSE CPU. Set on the character
+	 * Blueprint, or per NPC on its Witch Battle component (CPU Difficulty override). Not rollback state.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="CPU", meta=(ClampMin="0", ClampMax="100"))
+	int32 CPUDifficulty = 50;
+
 	/** Madrone change: the Just Defend window this fighter gets: its override (or the Battle Rules one) plus its bonus. */
 	UFUNCTION(BlueprintPure, Category="Just Defend")
 	int32 GetJustDefendWindow() const;

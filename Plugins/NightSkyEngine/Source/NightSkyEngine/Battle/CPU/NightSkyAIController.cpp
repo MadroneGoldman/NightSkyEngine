@@ -59,7 +59,13 @@ void ANightSkyAIController::Update()
 	else
 	{
 		WaitCount++;
-		if (WaitCount <= WaitLimit) return;
+		// Madrone change: while attacking, decide sooner the higher the fighter's CPU Difficulty (100: every frame), so
+		// short cancel windows aren't missed.
+		// At least 2 frames between tries, so a typed cancel gets read before the CPU types another.
+		const int32 Limit = Player->CheckIsAttacking()
+			                    ? FMath::Max(2, WaitLimit * (100 - FMath::Clamp(Player->CPUDifficulty, 0, 100)) / 100)
+			                    : WaitLimit;
+		if (WaitCount <= Limit) return;
 	}
 	
 	TArray<UState*> AvailableStates{};
@@ -69,6 +75,36 @@ void ANightSkyAIController::Update()
 		AvailableStates.Add(State);
 	}
 
+	// Madrone change: attacks out of their CPU Data range aren't options at all (not even as the only one).
+	AvailableStates.RemoveAll([this](const UState* State)
+	{
+		return State->CPUData.bAttack && !Player->CheckEnemyInRange(State->CPUData.AttackXBeginRange, State->CPUData.AttackXEndRange,
+		                                                             State->CPUData.AttackYBeginRange, State->CPUData.AttackYEndRange);
+	});
+	if (AvailableStates.IsEmpty()) return;
+
+	// Madrone change: while attacking, the CPU only acts to cancel, and only once the move has hit (the enemy is in
+	// hitstun, not blocking): never on block or whiff. Then it weighs attacks only (the lone option early in a move was
+	// the assist call, whose inputs came out as 4B).
+	if (Player->CheckIsAttacking() && !bDefendOnly)
+	{
+		const bool bHitConfirmed = (Player->AttackFlags & ATK_HasHit) && Player->Enemy->CheckIsStunned()
+			&& !Player->IsEnemyBlocking();
+		if (!bHitConfirmed) return;
+		// The move's frame stands still in hitstop: deciding (and typing a different motion) every frame of it garbled
+		// the buffer. Decide in its last frames, so the cancel's inputs are fresh when the move goes on.
+		if (Player->Hitstop > 2) return;
+		AvailableStates.RemoveAll([](const UState* State) { return !State->CPUData.bAttack; });
+		if (AvailableStates.IsEmpty()) return;
+	}
+
+	if (CVarLogCPUChoices.GetValueOnGameThread() >= 2 && Player->CheckIsAttacking()) // Madrone change: tuning aid
+	{
+		FString Names;
+		for (const UState* State : AvailableStates) Names += State->Name.ToString() + TEXT(" ");
+		UE_LOG(LogTemp, Log, TEXT("CPU %s attacking in %s, frame %d: %d options: %s"), *Player->GetName(),
+		       *Player->GetCurrentStateName(StateMachine_Primary).ToString(), Player->ActionTime, AvailableStates.Num(), *Names);
+	}
 	if (AvailableStates.Num() == 1)
 	{
 		ResetParams();
@@ -163,9 +199,26 @@ bool ANightSkyAIController::SetInputs()
 	// motion (236) went over it before its button, the next update started again from the motion, and the CPU never
 	// did a motion special or super.
 	if (InputCount > InputCountLimit) return false;
+	// Madrone change: a direction (held, or a motion's last one) stays held through the button that follows. Written as
+	// down, neutral, button, a crouching normal (2A: down held on the button frame) came out as 5A.
+	uint32 HeldDirection = 0;
 	for (auto Condition : TargetState->InputConditionLists[0].InputConditions)
 	{
-		Player->StoredInputBuffer.WriteInputCondition(Condition);
+		if (HeldDirection && Condition.Method == EInputMethod::PositiveEdge)
+		{
+			Player->StoredInputBuffer.Update(HeldDirection);
+			for (const FInputBitmask& Bitmask : Condition.Sequence)
+			{
+				Player->StoredInputBuffer.Update(Bitmask.InputFlag | HeldDirection);
+			}
+		}
+		else
+		{
+			Player->StoredInputBuffer.WriteInputCondition(Condition);
+		}
+		const bool bHolds = (Condition.Method == EInputMethod::Normal || Condition.Method == EInputMethod::Strict)
+			&& Condition.Sequence.Num() > 0;
+		HeldDirection = bHolds ? Condition.Sequence.Last().InputFlag & INP_Directions : 0;
 		InputCount += Condition.Sequence.Num();
 	}
 
@@ -211,6 +264,20 @@ int32 ANightSkyAIController::CheckBasicWeight(const UState* State) const
 		if (GetEnemyDistanceY() > 105000 && Player->PosY - Player->GroundHeight < Player->Enemy->PosY - Player->Enemy->GroundHeight)
 		{
 			Weight += GameState->BattleState.RandomManager.RandRange(10, 25);
+		}
+		// Madrone change: jump in on a crouching enemy (a forward jump from further, a neutral one from close), then an
+		// air overhead gets the mix-up bonus in the air.
+		{
+			const UNightSkyBattleRules* Rules = GetDefault<UNightSkyBattleRules>();
+			const int32 Distance = GetEnemyDistanceX();
+			const bool bJumpInRange = State->StateType == EStateType::ForwardJump
+				                          ? Distance >= 200000 && Distance <= 650000
+				                          : Distance <= 250000;
+			if (Rules->CPUMixupBonus > 0 && Player->Enemy->Stance == ACT_Crouching
+				&& Player->Enemy->PosY <= Player->Enemy->GroundHeight && bJumpInRange)
+			{
+				Weight += GameState->BattleState.RandomManager.RandRange(Rules->CPUMixupBonus / 2, Rules->CPUMixupBonus * 3 / 2);
+			}
 		}
 		break;
 	case EStateType::ForwardAirDash:
@@ -302,6 +369,9 @@ int32 ANightSkyAIController::CheckAttackWeight(const UState* State) const
 	                                                State->CPUData.AttackYBeginRange, State->CPUData.AttackYEndRange);
 	if (!bInRange)
 		Weight -= 50;
+	// Madrone change: an attack only from where its CPU Data range says: never out of range (bonuses used to outweigh the
+	// -50, so the CPU threw fireballs point blank and swung normals from far away).
+	if (!bInRange) return 0;
 
 	// Madrone change: projectiles from far away. Without this, walking and dashing in outscored a fireball at range.
 	const UNightSkyBattleRules* Rules = GetDefault<UNightSkyBattleRules>();
@@ -309,6 +379,30 @@ int32 ANightSkyAIController::CheckAttackWeight(const UState* State) const
 		&& GetEnemyDistanceX() >= Rules->CPUFarProjectileDistance)
 	{
 		Weight += GameState->BattleState.RandomManager.RandRange(Rules->CPUFarProjectileBonus / 2, Rules->CPUFarProjectileBonus * 3 / 2);
+	}
+
+	// Madrone change: cancels. While the CPU is attacking, the attacks it can enter are its move's cancel options.
+	if (Player->CheckIsAttacking() && bInRange && Rules->CPUCancelBonus > 0)
+	{
+		const int32 Bonus = Rules->CPUCancelBonus * FMath::Clamp(Player->CPUDifficulty, 0, 100) / 100;
+		if (Bonus > 0) Weight += GameState->BattleState.RandomManager.RandRange(Bonus / 2, Bonus * 3 / 2);
+	}
+
+	// Madrone change: crouching attacks, and mix-ups by how the enemy stands: lows on a standing enemy, overheads on a
+	// crouching one (blocking or not). Only when the move can reach.
+	const bool bEnemyGrounded = Player->Enemy->PosY <= Player->Enemy->GroundHeight;
+	if (bInRange && bEnemyGrounded)
+	{
+		if (State->EntryStance == EEntryStance::Crouching && Rules->CPUCrouchAttackBonus > 0)
+		{
+			Weight += GameState->BattleState.RandomManager.RandRange(Rules->CPUCrouchAttackBonus / 2, Rules->CPUCrouchAttackBonus * 3 / 2);
+		}
+		const bool bBeatsStance = (State->CPUData.BlockType == BLK_Low && Player->Enemy->Stance == ACT_Standing)
+			|| (State->CPUData.BlockType == BLK_High && Player->Enemy->Stance == ACT_Crouching);
+		if (bBeatsStance && Rules->CPUMixupBonus > 0)
+		{
+			Weight += GameState->BattleState.RandomManager.RandRange(Rules->CPUMixupBonus / 2, Rules->CPUMixupBonus * 3 / 2);
+		}
 	}
 
 	if (Player->PosY - Player->GroundHeight < Player->Enemy->PosY - Player->Enemy->GroundHeight && State->CPUData.bAntiAir) Weight += GameState->BattleState.RandomManager.RandRange(15, 40);

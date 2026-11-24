@@ -62,6 +62,26 @@ public:
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CPU", meta = (ClampMin = "0"))
 	int32 CPUFarProjectileBonus = 40;
 
+	/** CPU: average extra weight for crouching attacks (entry stance Crouching) against a grounded enemy. 0 turns it off. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CPU", meta = (ClampMin = "0"))
+	int32 CPUCrouchAttackBonus = 25;
+
+	/**
+	 * CPU: average extra weight for the attack that beats how the enemy is standing: lows (CPU Data > Block Type Low)
+	 * against a standing enemy, overheads (High) against a crouching one, blocking or not. Jumps toward a crouching enemy
+	 * at jump-in range get it too, so the CPU jumps in with an air overhead. 0 turns it off.
+	 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CPU", meta = (ClampMin = "0"))
+	int32 CPUMixupBonus = 50;
+
+	/**
+	 * CPU: average extra weight for cancelling an attack into one of its cancel options, at CPU Difficulty 100 (scaled
+	 * down with the fighter's difficulty; 0 difficulty gets none). The difficulty also shortens the CPU's wait between
+	 * decisions while it's attacking, from 7 frames down to every frame, so it catches short cancel windows.
+	 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CPU", meta = (ClampMin = "0"))
+	int32 CPUCancelBonus = 150;
+
 	virtual FName GetContainerName() const override { return TEXT("Project"); }
 	virtual FName GetCategoryName() const override { return TEXT("Night Sky Engine"); }
 };
