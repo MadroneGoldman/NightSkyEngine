@@ -84,9 +84,10 @@ bool UNSECharacterLibrary::BringFighterOnScreen(APlayerObject* Fighter, const FG
 	return true;
 }
 
-void UNSECharacterLibrary::ShowBattleSubtitle(const UObject* WorldContext, const FText Speaker, const FText Line, const float Seconds)
+void UNSECharacterLibrary::ShowBattleSubtitle(const UObject* WorldContext, const FText Speaker, const FText Line, const float Seconds,
+	const UObject* SpeakerObject)
 {
-	if (ANightSkyGameState* GameState = ANightSkyGameState::Get(WorldContext)) GameState->ShowBattleSubtitle(Speaker, Line, Seconds);
+	if (ANightSkyGameState* GameState = ANightSkyGameState::Get(WorldContext)) GameState->ShowBattleSubtitle(Speaker, Line, Seconds, SpeakerObject);
 }
 
 UNSECharacterExtension* UNSECharacterLibrary::GetCharacterExtension(const APlayerObject* Fighter, const TSubclassOf<UNSECharacterExtension> Class)

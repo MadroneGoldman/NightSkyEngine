@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -23,6 +23,10 @@ class ANightSkyGameState;
 /** Madrone change: a round started and every pooled object was reset, so objects that should be there from the start of
  * each round (battle props) can be added now. Also fires for the first round, inside Init. */
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnNightSkyRoundInit, ANightSkyGameState*);
+// Madrone change: a battle subtitle was shown (game state, speaker, line, the speaking fighter or other object, seconds).
+// Presentation only, like the subtitle: never during a resimulation. WitchToolsBattle voices it (Witch Voices).
+DECLARE_MULTICAST_DELEGATE_FiveParams(FOnNSEBattleSubtitleShown, class ANightSkyGameState*, const FText& /*Speaker*/, const FText& /*Line*/,
+	const UObject* /*SpeakerObject*/, float /*Seconds*/);
 
 // Battle data
 
@@ -420,7 +424,9 @@ public:
 	 * for one battle frame (a frame re-run after a rollback). Seconds of real time.
 	 */
 	UFUNCTION(BlueprintCallable, Category="Character Systems|Subtitles")
-	void ShowBattleSubtitle(FText Speaker, FText Line, float Seconds = 3.f);
+	void ShowBattleSubtitle(FText Speaker, FText Line, float Seconds = 3.f, const UObject* SpeakerObject = nullptr);
+	/** A battle subtitle was shown (Madrone change; WitchToolsBattle voices it). SpeakerObject: who says it (a fighter), if known. */
+	static FOnNSEBattleSubtitleShown OnBattleSubtitleShown;
 	UFUNCTION(BlueprintCallable, Category="Character Systems|Subtitles")
 	void HideBattleSubtitle();
 	/** The subtitle element (made on first use). */

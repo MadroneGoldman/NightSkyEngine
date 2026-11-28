@@ -55,7 +55,7 @@ public:
 	/** Shows a battle subtitle (the shared base subtitle element, Narrative's look). Skipped while resimulating and
 	 * never shown twice for the same frame. Seconds of real time. */
 	UFUNCTION(BlueprintCallable, Category="NSE|Subtitles", meta=(WorldContext="WorldContext"))
-	static void ShowBattleSubtitle(const UObject* WorldContext, FText Speaker, FText Line, float Seconds = 3.f);
+	static void ShowBattleSubtitle(const UObject* WorldContext, FText Speaker, FText Line, float Seconds = 3.f, const UObject* SpeakerObject = nullptr);
 
 	/** A fighter's extension of that class, or null. */
 	UFUNCTION(BlueprintPure, Category="NSE|Characters", meta=(DeterminesOutputType="Class"))

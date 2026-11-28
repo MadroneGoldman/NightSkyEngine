@@ -111,3 +111,13 @@ format becomes Tag. Overworld battles pick their own teams.
   name, at runtime (not in a constructor: the tag table isn't loaded when class defaults are made).
 - A Blueprint extension's out-array hook (`GetVirtualTeammateBars`) replaces the array it's given: the engine gathers
   each extension's bars into its own array, then appends.
+
+## Battle subtitles: typewriter, speaker, voice (2026-11-28)
+
+- `UNSEBattleSubtitleWidget` types the line out at **Reveal Chars Per Second** (30; 0 = all at once; lines with rich-text
+  markup show at once). `SetRevealTimes(Times)` gives it each character's time instead (from a voice that speaks the
+  line); `CompleteReveal()` shows the rest.
+- `ShowBattleSubtitle(Speaker, Line, Seconds, SpeakerObject)` (game state and `UNSECharacterLibrary`) takes who says it
+  (a fighter; optional) and broadcasts the native `ANightSkyGameState::OnBattleSubtitleShown(GameState, Speaker, Line,
+  SpeakerObject, Seconds)` after showing it. Like the subtitle, never while resimulating.
+- WitchToolsBattle speaks it in the speaker's mumble voice and sets the reveal times (WitchTools Docs/Voices.md).

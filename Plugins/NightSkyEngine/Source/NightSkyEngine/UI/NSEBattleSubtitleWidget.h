@@ -53,6 +53,19 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Subtitle")
 	FText RichLineFormat = NSLOCTEXT("NSEBattleSubtitle", "RichLineFormat", "<Narrative.Emphasis>{Speaker}</>: {Line}");
 
+	/** Typewriter: letters per second the line types out at (0: all at once). Lines with rich-text markup show at once. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Subtitle", meta=(ClampMin="0"))
+	float RevealCharsPerSecond = 30.f;
+
+	/** Typewriter timing for the line just shown: when each character appears (seconds), from a voice that speaks it
+	 * (Witch Voices), so text and voice stay together. Cleared by the next ShowSubtitle. */
+	UFUNCTION(BlueprintCallable, Category="Subtitle")
+	void SetRevealTimes(const TArray<float>& Times);
+
+	/** Shows the rest of the line now. */
+	UFUNCTION(BlueprintCallable, Category="Subtitle")
+	void CompleteReveal();
+
 	/** Speaker text format: {Speaker}. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Subtitle")
 	FText SpeakerFormat = NSLOCTEXT("NSEBattleSubtitle", "SpeakerFormat", "{Speaker}");
@@ -81,8 +94,13 @@ protected:
 
 private:
 	void SetShownVisibility(bool bShow);
+	/** Puts the first Count characters of the line (all: -1) on screen. */
+	void ApplyLine(int32 Count);
 	bool bShowing = false;
 	float TimeLeft = 0.f;
 	FText CurrentLine;
 	FText CurrentSpeaker;
+	TArray<float> RevealTimes;
+	float RevealElapsed = 0.f;
+	int32 RevealedChars = -1; // -1: whole line
 };

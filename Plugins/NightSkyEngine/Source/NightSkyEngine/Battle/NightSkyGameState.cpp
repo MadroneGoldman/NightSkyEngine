@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "NightSkyGameState.h"
@@ -3341,7 +3341,9 @@ UNSEBattleSubtitleWidget* ANightSkyGameState::GetBattleSubtitleWidget()
 	return BattleSubtitleWidget;
 }
 
-void ANightSkyGameState::ShowBattleSubtitle(const FText Speaker, const FText Line, const float Seconds)
+FOnNSEBattleSubtitleShown ANightSkyGameState::OnBattleSubtitleShown;
+
+void ANightSkyGameState::ShowBattleSubtitle(const FText Speaker, const FText Line, const float Seconds, const UObject* SpeakerObject)
 {
 	if (bIsResimulating) return;
 	// A frame re-run after a rollback load (not resimulated: the newest frame) mustn't show the line again.
@@ -3352,6 +3354,7 @@ void ANightSkyGameState::ShowBattleSubtitle(const FText Speaker, const FText Lin
 	SubtitleLog.Add(Speaker.IsEmpty() ? Line.ToString() : Speaker.ToString() + TEXT(": ") + Line.ToString());
 	UE_LOG(LogNightSkyEngine, Log, TEXT("Battle subtitle (frame %d): %s: %s"), BattleState.FrameNumber, *Speaker.ToString(), *Line.ToString());
 	if (UNSEBattleSubtitleWidget* Widget = GetBattleSubtitleWidget()) Widget->ShowSubtitle(Speaker, Line, Seconds);
+	OnBattleSubtitleShown.Broadcast(this, Speaker, Line, SpeakerObject, Seconds);
 }
 
 void ANightSkyGameState::HideBattleSubtitle()
