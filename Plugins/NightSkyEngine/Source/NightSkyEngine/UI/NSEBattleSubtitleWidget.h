@@ -66,6 +66,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Subtitle")
 	void CompleteReveal();
 
+	/** Typewriter, rich text line: the not-yet-shown rest is written in this rich-text style (make it transparent in
+	 * the line's style table), so the whole line is laid out from the first letter and the speaker's name never moves.
+	 * Empty: the rest is left out (Madrone change). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Subtitle")
+	FString HiddenStyle = TEXT("WitchHidden");
+
 	/** Speaker text format: {Speaker}. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Subtitle")
 	FText SpeakerFormat = NSLOCTEXT("NSEBattleSubtitle", "SpeakerFormat", "{Speaker}");

@@ -43,12 +43,18 @@ void UNSEBattleSubtitleWidget::ApplyLine(const int32 Count)
 	if (LineText) LineText->SetText(Shown);
 	if (LineRichText)
 	{
-		if (CurrentSpeaker.IsEmpty() || SpeakerName) LineRichText->SetText(Shown);
+		FText RichShown = Shown;
+		if (!HiddenStyle.IsEmpty() && Count >= 0 && Count < Full.Len())
+		{
+			// the rest of the line, invisible, so the layout (and the speaker's name) never moves while it types
+			RichShown = FText::FromString(Full.Left(Count) + TEXT("<") + HiddenStyle + TEXT(">") + Full.Mid(Count) + TEXT("</>"));
+		}
+		if (CurrentSpeaker.IsEmpty() || SpeakerName) LineRichText->SetText(RichShown);
 		else
 		{
 			FFormatNamedArguments Args;
 			Args.Add(TEXT("Speaker"), CurrentSpeaker);
-			Args.Add(TEXT("Line"), Shown);
+			Args.Add(TEXT("Line"), RichShown);
 			LineRichText->SetText(FText::Format(RichLineFormat, Args));
 		}
 	}

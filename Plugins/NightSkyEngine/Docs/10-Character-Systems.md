@@ -121,3 +121,7 @@ format becomes Tag. Overworld battles pick their own teams.
   (a fighter; optional) and broadcasts the native `ANightSkyGameState::OnBattleSubtitleShown(GameState, Speaker, Line,
   SpeakerObject, Seconds)` after showing it. Like the subtitle, never while resimulating.
 - WitchToolsBattle speaks it in the speaker's mumble voice and sets the reveal times (WitchTools Docs/Voices.md).
+- `UNSEBattleSubtitleWidget::HiddenStyle` (default `WitchHidden`): while typing a rich-text line, the rest of the line is
+  written in that (transparent) style, so the whole line is laid out from the first letter and the speaker's name never
+  moves (2026-11-28). Make the style transparent in the line's style table; empty leaves the rest out. WitchTools'
+  `WBP_BattleSubtitle` uses `/WitchTools/Voice/UI/DT_WitchRichText_Dialogue`, which has it.
