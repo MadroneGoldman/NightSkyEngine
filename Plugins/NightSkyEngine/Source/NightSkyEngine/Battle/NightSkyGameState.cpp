@@ -1,8 +1,10 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "NightSkyGameState.h"
 #include "NightSkyEngine/Battle/Misc/BaroqueCancelVisuals.h" // Madrone change
+#include "NightSkyEngine/Miscellaneous/NightSkyBattleRules.h" // Madrone change
+#include "Components/PostProcessComponent.h" // Madrone change
 #include "EngineUtils.h"
 #include "Engine/Engine.h"
 #include "LevelSequenceActor.h"
@@ -30,6 +32,9 @@
 #include "NightSkyEngine/UI/NightSkyBattleHudActor.h"
 #include "NightSkyEngine/UI/NightSkyBattleWidget.h"
 #include "NightSkyEngine/UI/NSEStyleManager.h"
+#include "NightSkyEngine/UI/NSEBattleSubtitleWidget.h" // Madrone change
+#include "NightSkyEngine/Battle/Misc/NSECharacterLibrary.h" // Madrone change
+#include "Blueprint/UserWidget.h" // Madrone change
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(NightSkyGameState)
 
@@ -86,13 +91,57 @@ void ANightSkyGameState::BeginPlay()
 	UpdateCamera();
 
 	BaroqueVisuals = NewObject<UBaroqueCancelVisuals>(this); // Madrone change
+	ApplyBattleExposureLock(); // Madrone change
 
 	Init();
+}
+
+// Madrone change: auto exposure off for the battle.
+void ANightSkyGameState::ApplyBattleExposureLock()
+{
+	const UNightSkyBattleRules* Rules = GetDefault<UNightSkyBattleRules>();
+	if (!Rules->bDisableAutoExposureInBattle || !GetWorld() || IsValid(ExposureLockActor)) return;
+	// Its own visible actor: a post-process component only applies when its owner renders (the game state is hidden).
+	FActorSpawnParameters Params;
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	Params.ObjectFlags |= RF_Transient;
+	ExposureLockActor = GetWorld()->SpawnActor<AActor>(AActor::StaticClass(), FTransform::Identity, Params);
+	if (!ExposureLockActor) return;
+	UPostProcessComponent* PostProcess = NewObject<UPostProcessComponent>(ExposureLockActor, TEXT("BattleExposureLock"));
+	ExposureLockActor->SetRootComponent(PostProcess);
+	PostProcess->bUnbound = true;
+	PostProcess->Priority = 20000.f; // above every level volume and the Baroque darkening
+	FPostProcessSettings& S = PostProcess->Settings;
+	if (Rules->bUseFixedBattleExposure)
+	{
+		S.bOverride_AutoExposureMinBrightness = true;
+		S.AutoExposureMinBrightness = Rules->FixedBattleExposureEV100;
+		S.bOverride_AutoExposureMaxBrightness = true;
+		S.AutoExposureMaxBrightness = Rules->FixedBattleExposureEV100;
+	}
+	else
+	{
+		// Hold the exposure where the overworld left it. The engine clamps speeds to at least 0.001 f-stops a second
+		// (about a tenth of a stop over a whole match); 0 would mean "jump straight to the target", not frozen.
+		S.bOverride_AutoExposureSpeedUp = true;
+		S.AutoExposureSpeedUp = 0.001f;
+		S.bOverride_AutoExposureSpeedDown = true;
+		S.AutoExposureSpeedDown = 0.001f;
+	}
+	PostProcess->RegisterComponent();
+}
+
+void ANightSkyGameState::RemoveBattleExposureLock()
+{
+	if (IsValid(ExposureLockActor)) ExposureLockActor->Destroy();
+	ExposureLockActor = nullptr;
 }
 
 void ANightSkyGameState::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	Super::EndPlay(EndPlayReason);
+	RemoveBattleExposureLock(); // Madrone change
+	if (IsValid(BattleSubtitleWidget)) BattleSubtitleWidget->RemoveFromParent(); // Madrone change
 	if (BaroqueVisuals) BaroqueVisuals->Reset(); // Madrone change: fighters' stencil back, screen not dark
 	GameInstance->EndRecordReplay();
 }
@@ -123,6 +172,22 @@ void ANightSkyGameState::Init()
 			List.RemoveAt(i);
 			if (Colors.IsValidIndex(i)) Colors.RemoveAt(i);
 		}
+	}
+
+	// Madrone change: a character that always fights with a partner (CHR_ Default Tag Partner) gets it as its tag
+	// partner when it's alone on its side, and the battle becomes a tag battle (Boy Mom and Golden Boy).
+	for (const bool bP1 : {true, false})
+	{
+		auto& List = bP1 ? GameInstance->BattleData.PlayerListP1 : GameInstance->BattleData.PlayerListP2;
+		auto& Colors = bP1 ? GameInstance->BattleData.ColorIndicesP1 : GameInstance->BattleData.ColorIndicesP2;
+		if (List.Num() != 1) continue;
+		const UPrimaryCharaData* Only = List[0].LoadSynchronous();
+		if (!Only || Only->DefaultTagPartner.IsNull()) continue;
+		List.Add(Only->DefaultTagPartner);
+		while (Colors.Num() < List.Num()) Colors.Add(1);
+		GameInstance->BattleData.BattleFormat = EBattleFormat::Tag;
+		UE_LOG(LogNightSkyEngine, Log, TEXT("Battle init: %s gets its default tag partner %s (tag battle)"), *Only->GetName(),
+			*Only->DefaultTagPartner.ToString());
 	}
 
 	// Madrone change: a battle level started with no fighter on a side (Play In Editor straight into a stage, without
@@ -207,7 +272,11 @@ void ANightSkyGameState::Init()
 		SpawnedPlayer->GameState = this;
 		SpawnedPlayer->AddTickPrerequisiteActor(this);
 
-		if (GameInstance->IsCPUBattle && !GameInstance->IsTraining)
+		// Madrone change: never a CPU under the synctest runner (as NightSkyWTGameState already does for overworld battles).
+		// The AI controller reads the battle and sets Inputs outside rollback (UpdateGameState skips CPU->Update while
+		// resimulating), so a CPU P2 desyncs every synctest frame once the round starts, whatever the fighters. An
+		// Is CPU Battle left on by a test (game instance defaults edited from Python) made every stage synctest fail.
+		if (GameInstance->IsCPUBattle && !GameInstance->IsTraining && GameInstance->FighterRunner != SyncTest)
 		{
 			SpawnedPlayer->SpawnDefaultController();
 			SpawnedPlayer->bIsCpu = true;
@@ -367,6 +436,9 @@ void ANightSkyGameState::RoundInit()
 		GetMainPlayer(false)->PlayerFlags &= ~PLF_RoundWinInputLock;
 
 		for (const auto& Player : Players) Player->RoundWinTimer = 120;
+		// Madrone change: the KO'd fighter's KO object (ST_CommonKO*) hid the HUD for the KO; every other format shows it
+		// again here, the tag one didn't, so the HUD stayed gone for the rest of the fight after a teammate went down.
+		BattleState.bHUDVisible = true;
 	}
 	else if (BattleState.BattleFormat == EBattleFormat::NickTour) //Madrone change this whole round init block
 	{
@@ -450,6 +522,7 @@ void ANightSkyGameState::RoundInit()
 	BattleState.ScreenData.TargetObjects.AddUnique(GetMainPlayer(true));
 	BattleState.ScreenData.TargetObjects.AddUnique(GetMainPlayer(false));
 	AssignEnemy();
+	RoundInitCharacterSystems(); // Madrone change
 }
 
 void ANightSkyGameState::AssignEnemy()
@@ -552,6 +625,7 @@ void ANightSkyGameState::MatchInit()
 
 	PlayMusic(GameInstance->BattleData.MusicName);
 	BattleHudActor->BottomWidget->PlayFadeOutAnim();
+	InitCharacterSystems(); // Madrone change: character extensions and interactions
 	RoundInit();
 	PlayIntros();
 }
@@ -623,12 +697,18 @@ void ANightSkyGameState::MatchInitWt(int Team1Count, int Team2Count) //Madrone c
 	BattleState.MainPlayer[1] = Players[BattleState.TeamData[0].TeamCount];
 	BattleState.MainPlayer[1]->PlayerFlags |= PLF_IsOnScreen;
 	BattleState.BattleFormat = GameInstance->BattleData.BattleFormat;
+	// Madrone change: an overworld fight with a tag partner on either side (the player's tag slot, an NPC's allies, a CHR_
+	// Default Tag Partner such as Boy Mom's Golden Boy) is a Tag battle: CanTag refuses every tag outside the Tag format,
+	// and the game instance keeps whatever format the menu last used (Rounds by default). Dedicated assists (P1Assist /
+	// P2Assist) work in every format.
+	if (Team1Count > 1 || Team2Count > 1) BattleState.BattleFormat = EBattleFormat::Tag;
 	BattleState.MaxTimeUntilRoundStart = GameInstance->BattleData.TimeUntilRoundStart;
 	BattleState.MaxRoundCount = GameInstance->BattleData.RoundCount;
 	BattleState.RoundTimer = GameInstance->BattleData.StartRoundTimer * 60;
 
 	PlayMusic(GameInstance->BattleData.MusicName);
 	BattleHudActor->BottomWidget->PlayFadeOutAnim();
+	InitCharacterSystems(); // Madrone change: character extensions and interactions
 	RoundInit();
 	PlayIntros();
 }
@@ -751,6 +831,7 @@ void ANightSkyGameState::UpdateGameState(int32 Input1, int32 Input2, bool bShoul
 	else if (const auto CPU = Cast<ANightSkyAIController>(BattleState.MainPlayer[1]->Controller); CPU && !bShouldResimulate)
 		CPU->Update();
 	OnFighterInputs(bShouldResimulate); // Madrone change: training dummy, swap, record / playback (subclass)
+	if (!BattleState.SuperFreezeDuration) UpdateCharacterSystems(); // Madrone change: extensions, interactions
 
 	for (int i = 0; i < SortedObjects.Num(); i++)
 	{
@@ -1202,7 +1283,7 @@ void ANightSkyGameState::HandleRoundWin()
 		BattleState.PauseTimer = true;
 		if (GetMainPlayer(true)->RoundWinTimer == 0 && !IsTagBattle())
 		{
-			GetMainPlayer(true)->JumpToStatePrimary(State_Universal_RoundWin);
+			EnterWinState(true, State_Universal_RoundWin, false); // Madrone change: character extensions may override
 		}
 		NextRoundTransition(true);
 	}
@@ -1217,7 +1298,7 @@ void ANightSkyGameState::HandleRoundWin()
 		BattleState.PauseTimer = true;
 		if (GetMainPlayer(false)->RoundWinTimer == 0 && !IsTagBattle())
 		{
-			GetMainPlayer(false)->JumpToStatePrimary(State_Universal_RoundWin);
+			EnterWinState(false, State_Universal_RoundWin, false); // Madrone change: character extensions may override
 		}
 		NextRoundTransition(false);
 	}
@@ -1250,7 +1331,7 @@ void ANightSkyGameState::HandleRoundWin()
 			BattleState.PauseTimer = true;
 			if (GetMainPlayer(true)->RoundWinTimer == 0 && !IsTagBattle())
 			{
-				GetMainPlayer(true)->JumpToStatePrimary(State_Universal_RoundWin);
+				EnterWinState(true, State_Universal_RoundWin, false); // Madrone change: character extensions may override
 				GetMainPlayer(false)->JumpToStatePrimary(State_Universal_RoundLose);
 			}
 			NextRoundTransition(true);
@@ -1267,7 +1348,7 @@ void ANightSkyGameState::HandleRoundWin()
 			BattleState.PauseTimer = true;
 			if (GetMainPlayer(false)->RoundWinTimer == 0 && !IsTagBattle())
 			{
-				GetMainPlayer(false)->JumpToStatePrimary(State_Universal_RoundWin);
+				EnterWinState(false, State_Universal_RoundWin, false); // Madrone change: character extensions may override
 				GetMainPlayer(true)->JumpToStatePrimary(State_Universal_RoundLose);
 			}
 			NextRoundTransition(false);
@@ -1306,7 +1387,7 @@ void ANightSkyGameState::NextRoundTransition(bool bIsP1)
 				RoundInit();
 			}
 		}
-		else if (!HandleMatchWin() && GetMainPlayer(bIsP1)->RoundEndFlag == true)
+		else if (!HandleMatchWin() && GetMainPlayer(bIsP1)->RoundEndFlag == true && !IsVictorySequenceRunning()) // Madrone change
 		{
 			if (BattleState.BattlePhase != EBattlePhase::Fade)
 			{
@@ -1331,14 +1412,14 @@ bool ANightSkyGameState::HandleMatchWin()
 		if (BattleState.BattlePhase == EBattlePhase::EndScreen) return true;
 		if (BattleState.CurrentWinSide == WIN_P2)
 		{
-			if (GetMainPlayer(false)->RoundEndFlag == true)
+			if (GetMainPlayer(false)->RoundEndFlag == true && !IsVictorySequenceRunning()) // Madrone change
 			{
 				EndMatch();
 			}
 		}
 		else
 		{
-			if (GetMainPlayer(true)->RoundEndFlag == true)
+			if (GetMainPlayer(true)->RoundEndFlag == true && !IsVictorySequenceRunning()) // Madrone change
 			{
 				EndMatch();
 			}
@@ -1352,7 +1433,7 @@ bool ANightSkyGameState::HandleMatchWin()
 			if (BattleState.P1RoundsWon >= BattleState.MaxRoundCount && BattleState.P2RoundsWon < BattleState.
 				P1RoundsWon)
 			{
-				GetMainPlayer(true)->JumpToStatePrimary(State_Universal_MatchWin);
+				EnterWinState(true, State_Universal_MatchWin, true); // Madrone change
 				GameInstance->EndRecordReplay();
 				BattleState.CurrentWinSide = WIN_P1;
 				return true;
@@ -1360,7 +1441,7 @@ bool ANightSkyGameState::HandleMatchWin()
 			if (BattleState.P2RoundsWon >= BattleState.MaxRoundCount && BattleState.P1RoundsWon < BattleState.
 				P2RoundsWon)
 			{
-				GetMainPlayer(false)->JumpToStatePrimary(State_Universal_MatchWin);
+				EnterWinState(false, State_Universal_MatchWin, true); // Madrone change
 				GameInstance->EndRecordReplay();
 				BattleState.CurrentWinSide = WIN_P2;
 				return true;
@@ -1377,18 +1458,21 @@ bool ANightSkyGameState::HandleMatchWin()
 	case EBattleFormat::Tag:
 	case EBattleFormat::KOF:
 		{
+			// Madrone change: a side wins when every fighter of the other side is down and it still has one standing. It
+			// compared the two sides' KO counts instead, so after one KO each (Golden Boy swooning, then the player's solo
+			// fighter going down) nobody won and RoundInit ran again every frame for the rest of the fight.
 			if (BattleState.P1RoundsWon >= BattleState.TeamData[1].TeamCount && BattleState.P2RoundsWon < BattleState.
-				P1RoundsWon)
+				TeamData[0].TeamCount)
 			{
-				GetMainPlayer(true)->JumpToStatePrimary(State_Universal_MatchWin);
+				EnterWinState(true, State_Universal_MatchWin, true); // Madrone change
 				GameInstance->EndRecordReplay();
 				BattleState.CurrentWinSide = WIN_P1;
 				return true;
 			}
 			if (BattleState.P2RoundsWon >= BattleState.TeamData[0].TeamCount && BattleState.P1RoundsWon < BattleState.
-				P2RoundsWon)
+				TeamData[1].TeamCount)
 			{
-				GetMainPlayer(false)->JumpToStatePrimary(State_Universal_MatchWin);
+				EnterWinState(false, State_Universal_MatchWin, true); // Madrone change
 				GameInstance->EndRecordReplay();
 				BattleState.CurrentWinSide = WIN_P2;
 				return true;
@@ -1407,7 +1491,7 @@ bool ANightSkyGameState::HandleMatchWin()
 			if (BattleState.P1RoundsWon >= BattleState.TeamData[1].TeamCount && BattleState.P2RoundsWon <= BattleState.
 				P1RoundsWon)
 			{
-				GetMainPlayer(true)->JumpToStatePrimary(State_Universal_MatchWin);
+				EnterWinState(true, State_Universal_MatchWin, true); // Madrone change
 				GameInstance->EndRecordReplay();
 				BattleState.CurrentWinSide = WIN_P1;
 				return true;
@@ -1415,7 +1499,7 @@ bool ANightSkyGameState::HandleMatchWin()
 			if (BattleState.P2RoundsWon >= BattleState.TeamData[0].TeamCount && BattleState.P1RoundsWon <= BattleState.
 				P2RoundsWon)
 			{
-				GetMainPlayer(false)->JumpToStatePrimary(State_Universal_MatchWin);
+				EnterWinState(false, State_Universal_MatchWin, true); // Madrone change
 				GameInstance->EndRecordReplay();
 				BattleState.CurrentWinSide = WIN_P2;
 				return true;
@@ -2047,6 +2131,13 @@ void ANightSkyGameState::UpdateHUD()
 				BattleHudActor->TopWidget->UpdateAndNotifyP2RecoverableHealth(i, static_cast<float>(GetTeam(false)[i]->CurrentHealth +
 					GetTeam(false)[i]->RecoverableHealth) / static_cast<float>(GetTeam(false)[i]->MaxHealth));
 			}
+			// Madrone change: character extensions' teammate bars (virtual teammates, recoloured partners)
+			for (const bool bSideP1 : {true, false})
+			{
+				TArray<FNSETeammateBar> VirtualBars, RealOverrides;
+				GatherTeammateBars(bSideP1, VirtualBars, RealOverrides);
+				BattleHudActor->TopWidget->SetCharacterTeammateBars(bSideP1, VirtualBars, RealOverrides);
+			}
 			BattleHudActor->TopWidget->P1RoundsWon = BattleState.P1RoundsWon;
 			BattleHudActor->TopWidget->P2RoundsWon = BattleState.P2RoundsWon;
 			BattleHudActor->TopWidget->Timer = static_cast<float>(BattleState.RoundTimer / 60);
@@ -2166,6 +2257,11 @@ APlayerObject* ANightSkyGameState::SwitchMainPlayer(APlayerObject* InPlayer, con
 	const bool IsP1 = InPlayer->PlayerIndex == 0;
 	if (BattleState.BattleFormat != EBattleFormat::Tag && TeamIndex >= BattleState.TeamData[IsP1 == false].TeamCount)
 		return nullptr;
+	// Madrone change (agent C): a Tag battle can have a one-fighter side now (CHR_ DefaultTagPartner fills only one side);
+	// its tag out state asked for team index 1 and crashed on CooldownTimer / GetTeam out of bounds.
+	if (TeamIndex >= BattleState.TeamData[IsP1 == false].TeamCount || TeamIndex >= GetTeam(IsP1).Num()
+		|| !BattleState.TeamData[IsP1 == false].CooldownTimer.IsValidIndex(TeamIndex))
+		return nullptr;
 	if (BattleState.TeamData[IsP1 == false].CooldownTimer[TeamIndex] > 0 && !bForce) return nullptr;
 
 	// Madrone change: only the fighter on screen can switch out. A tag out state calls this every frame it runs, and the
@@ -2178,6 +2274,8 @@ APlayerObject* ANightSkyGameState::SwitchMainPlayer(APlayerObject* InPlayer, con
 	{
 		if (!bEvenOnScreen) return nullptr;
 	}
+	// Madrone change: character extensions may refuse a tag (not the forced switch after a KO)
+	if (!bForce && !CanTagByExtensions(InPlayer, NewPlayer)) return nullptr;
 	NewPlayer->TeamIndex = 0;
 	InPlayer->TeamIndex = TeamIndex;
 	BattleState.ScreenData.TargetObjects.Remove(InPlayer);
@@ -2198,7 +2296,7 @@ APlayerObject* ANightSkyGameState::SwitchMainPlayer(APlayerObject* InPlayer, con
 	// Madrone change: the one who left can't be tagged back in for TagCooldown frames (nothing set a tag cooldown before)
 	{
 		int32& Cooldown = BattleState.TeamData[IsP1 == false].CooldownTimer[TeamIndex];
-		Cooldown = FMath::Max(Cooldown, BattleState.TagCooldown);
+		Cooldown = ModifyCooldownByExtensions(InPlayer, FMath::Max(Cooldown, BattleState.TagCooldown)); // Madrone change: extensions
 	}
 	NewPlayer->SetOnScreen(true);
 	NewPlayer->CalculatePushbox();
@@ -2215,6 +2313,10 @@ APlayerObject* ANightSkyGameState::SwitchMainPlayer(APlayerObject* InPlayer, con
 	SetDrawPriorityFront(NewPlayer);
 	BattleHudActor->TopWidget->PlayTagAnim(IsP1);
 	BattleHudActor->TopWidget->SetMainPlayerIndex(IsP1, NewPlayer->PlayerIndex);
+	// Madrone change: character extensions and interactions
+	for (UNSECharacterExtension* Extension : InPlayer->CharacterExtensions) if (Extension) Extension->OnTaggedOut(NewPlayer);
+	for (UNSECharacterExtension* Extension : NewPlayer->CharacterExtensions) if (Extension) Extension->OnTaggedIn(InPlayer);
+	QueueInteractionTrigger(ENSEInteractionTrigger::TagIn);
 	return NewPlayer;
 }
 
@@ -2241,6 +2343,10 @@ APlayerObject* ANightSkyGameState::CallAssist(const bool IsP1, const int AssistI
 		if (AssistIndex == 0) return nullptr;
 		if (BattleState.BattleFormat != EBattleFormat::Tag && AssistIndex >= BattleState.TeamData[IsP1 == false].TeamCount)
 			return nullptr;
+		// Madrone change (agent C): one-fighter side in a Tag battle (see SwitchMainPlayer)
+		if (AssistIndex >= BattleState.TeamData[IsP1 == false].TeamCount || AssistIndex >= GetTeam(IsP1).Num()
+			|| !BattleState.TeamData[IsP1 == 0].CooldownTimer.IsValidIndex(AssistIndex))
+			return nullptr;
 		if (BattleState.TeamData[IsP1 == 0].CooldownTimer[AssistIndex] > 0) return nullptr;
 
 		NewPlayer = GetTeam(IsP1)[AssistIndex];
@@ -2250,6 +2356,7 @@ APlayerObject* ANightSkyGameState::CallAssist(const bool IsP1, const int AssistI
 	if (NewPlayer->CurrentHealth == 0) return nullptr;
 	if (NewPlayer->PlayerFlags & PLF_IsOnScreen) return nullptr;
 	if (!NewPlayer->PrimaryStateMachine.StateNames.Contains(AssistName)) return nullptr;
+	if (!CanCallAssistByExtensions(GetMainPlayer(IsP1), NewPlayer)) return nullptr; // Madrone change
 	
 
 	NewPlayer->Enemy = GetTeam(!IsP1)[0];
@@ -2266,12 +2373,21 @@ APlayerObject* ANightSkyGameState::CallAssist(const bool IsP1, const int AssistI
 	BattleState.ScreenData.DefaultWidth += 150;
 	
 	BattleHudActor->TopWidget->PlayAssistAnim(IsP1);
+	// Madrone change: character extensions and interactions
+	{
+		APlayerObject* Caller = GetMainPlayer(IsP1);
+		if (Caller) for (UNSECharacterExtension* Extension : Caller->CharacterExtensions) if (Extension) Extension->OnAssistCalled(Caller, NewPlayer);
+		if (NewPlayer != Caller) for (UNSECharacterExtension* Extension : NewPlayer->CharacterExtensions) if (Extension) Extension->OnAssistCalled(Caller, NewPlayer);
+		QueueInteractionTrigger(ENSEInteractionTrigger::AssistCall);
+	}
 	return NewPlayer;
 }
 
 void ANightSkyGameState::SetTeamCooldown(const bool IsP1, const int TeamIndex, const int Cooldown)
 {
-	BattleState.TeamData[IsP1 == 0].CooldownTimer[TeamIndex] = Cooldown;
+	// Madrone change: the teammate's character extensions may change it
+	const TArray<APlayerObject*> Team = GetTeam(IsP1);
+	BattleState.TeamData[IsP1 == 0].CooldownTimer[TeamIndex] = Team.IsValidIndex(TeamIndex) ? ModifyCooldownByExtensions(Team[TeamIndex], Cooldown) : Cooldown;
 }
 
 bool ANightSkyGameState::CanTag(const APlayerObject* InPlayer, int TeamIndex) const
@@ -2288,6 +2404,7 @@ bool ANightSkyGameState::CanTag(const APlayerObject* InPlayer, int TeamIndex) co
 	const auto NewPlayer = GetTeam(IsP1)[TeamIndex];
 	if (NewPlayer->CurrentHealth == 0) return false;
 	if (NewPlayer->PlayerFlags & PLF_IsOnScreen) return false;
+	if (!CanTagByExtensions(InPlayer, NewPlayer)) return false; // Madrone change
 
 	return true;
 }
@@ -2697,6 +2814,13 @@ void ANightSkyGameState::SaveGameState(TArray<uint8>& RollbackBuffer, int32* InC
 		BattleExtensions[i]->SaveForRollback(ExtensionBuffer);
 		RollbackBuffer.Append(ExtensionBuffer);
 	}
+	// Madrone change: character interaction events
+	for (UNSECharacterInteractionEvent* Event : InteractionEvents)
+	{
+		TArray<uint8> EventBuffer;
+		Event->SaveForRollback(EventBuffer);
+		RollbackBuffer.Append(EventBuffer);
+	}
 
 	for (int i = 0; i < MaxBattleObjects; i++)
 	{
@@ -2761,6 +2885,13 @@ void ANightSkyGameState::SaveGameState(TArray<uint8>& RollbackBuffer, int32* InC
 			Player->PrimaryStateMachine.CurrentState->SaveForRollback(StateBuffer);
 			RollbackBuffer.Append(StateBuffer);
 		}
+		// Madrone change: the fighter's character extensions
+		for (UNSECharacterExtension* Extension : Player->CharacterExtensions)
+		{
+			TArray<uint8> ExtensionBuffer;
+			Extension->SaveForRollback(ExtensionBuffer);
+			RollbackBuffer.Append(ExtensionBuffer);
+		}
 	}
 	
 	{
@@ -2798,6 +2929,10 @@ void ANightSkyGameState::LoadGameState(const TArray<uint8>& RollbackBuffer)
 	{
 		DataIdx += BattleExtensions[i]->LoadForRollback(GetRollbackBufferView(DataIdx));
 	}
+	for (UNSECharacterInteractionEvent* Event : InteractionEvents) // Madrone change
+	{
+		DataIdx += Event->LoadForRollback(GetRollbackBufferView(DataIdx));
+	}
 	for (int i = 0; i < MaxBattleObjects; i++)
 	{
 		if (RollbackBuffer[DataIdx])
@@ -2823,6 +2958,10 @@ void ANightSkyGameState::LoadGameState(const TArray<uint8>& RollbackBuffer)
 		DataIdx += SizeOfPlayerObject;
 		DataIdx += Player->LoadForRollbackBP(GetRollbackBufferView(DataIdx));
 		DataIdx += Player->PrimaryStateMachine.CurrentState->LoadForRollback(GetRollbackBufferView(DataIdx));
+		for (UNSECharacterExtension* Extension : Player->CharacterExtensions) // Madrone change
+		{
+			DataIdx += Extension->LoadForRollback(GetRollbackBufferView(DataIdx));
+		}
 	}
 	
 	SortObjects();
@@ -2877,4 +3016,345 @@ TArray<FText> ANightSkyGameState::GetPlayerNames()
 	 	PlayerNames.Add(Players[i]->CharacterName);
 	 }
 	return PlayerNames;
+}
+
+
+// ------------------------------------------------------------------------------------ Madrone change: character systems
+// Character extensions (per fighter) and character interactions (pairs of characters on screen together). Docs:
+// Plugins/NightSkyEngine/Docs/10-Character-Systems.md, WitchTools Docs/CharacterInteractions.md.
+
+static bool SamePair(const FNSECharacterInteractionPair& A, const FNSECharacterInteractionPair& B)
+{
+	return A.CharacterA == B.CharacterA && A.CharacterB == B.CharacterB && A.Event == B.Event;
+}
+
+void ANightSkyGameState::InitCharacterSystems()
+{
+	for (UNSECharacterInteractionEvent* Event : InteractionEvents)
+	{
+		if (Event && Event->bActive) Event->StopEvent(true);
+	}
+	InteractionEvents.Empty();
+	InteractionPairs.Empty();
+	InteractionPairsByCharacter.Empty();
+	PendingInteractionTriggers = 0;
+	ShownSubtitleKeys.Empty();
+	SubtitleLog.Empty();
+	HideBattleSubtitle();
+
+	const TArray<APlayerObject*, TInlineAllocator<8>> Fighters = GetRollbackPlayers();
+
+	// Extensions: the CHR_ asset's, then the fighter Blueprint's, one instance per class.
+	for (APlayerObject* Fighter : Fighters)
+	{
+		if (!IsValid(Fighter)) continue;
+		Fighter->CharacterExtensions.Empty();
+		TArray<TSubclassOf<UNSECharacterExtension>> Classes;
+		if (Fighter->CharaData) for (const auto& Class : Fighter->CharaData->CharacterExtensions) Classes.AddUnique(Class);
+		for (const auto& Class : Fighter->CharacterExtensionClasses) Classes.AddUnique(Class);
+		for (const TSubclassOf<UNSECharacterExtension>& Class : Classes)
+		{
+			if (!Class || Class->HasAnyClassFlags(CLASS_Abstract)) continue;
+			UNSECharacterExtension* Extension = NewObject<UNSECharacterExtension>(Fighter, Class);
+			Extension->Owner = Fighter;
+			Extension->GameState = this;
+			Fighter->CharacterExtensions.Add(Extension);
+		}
+	}
+
+	// Pairs: Battle Rules' sets, this game state's, then every fighter's CHR_ list (Character A empty = that character).
+	auto AddPair = [this](FNSECharacterInteractionPair Pair, const FGameplayTag& Self)
+	{
+		if (!Pair.CharacterA.IsValid()) Pair.CharacterA = Self;
+		if (!Pair.CharacterA.IsValid() || !Pair.CharacterB.IsValid() || !Pair.Event) return;
+		if (InteractionPairs.ContainsByPredicate([&Pair](const FNSECharacterInteractionPair& Other) { return SamePair(Pair, Other); })) return;
+		InteractionPairs.Add(Pair);
+	};
+	for (const TSoftObjectPtr<UNSECharacterInteractionData>& Set : GetDefault<UNightSkyBattleRules>()->InteractionSets)
+	{
+		if (const UNSECharacterInteractionData* Data = Set.LoadSynchronous())
+			for (const auto& Pair : Data->Pairs) AddPair(Pair, FGameplayTag());
+	}
+	for (const UNSECharacterInteractionData* Data : CharacterInteractionData)
+	{
+		if (Data) for (const auto& Pair : Data->Pairs) AddPair(Pair, FGameplayTag());
+	}
+	for (const APlayerObject* Fighter : Fighters)
+	{
+		if (IsValid(Fighter) && Fighter->CharaData)
+			for (const auto& Pair : Fighter->CharaData->CharacterInteractions) AddPair(Pair, Fighter->GetCharacterTag());
+	}
+	InteractionPairs.StableSort([](const FNSECharacterInteractionPair& A, const FNSECharacterInteractionPair& B) { return A.Priority < B.Priority; });
+	for (int32 i = 0; i < InteractionPairs.Num(); i++)
+	{
+		InteractionPairsByCharacter.FindOrAdd(InteractionPairs[i].CharacterA).AddUnique(i);
+		InteractionPairsByCharacter.FindOrAdd(InteractionPairs[i].CharacterB).AddUnique(i);
+	}
+
+	// Events: one per (subject fighter, partner fighter) that matches a pair, in pair then fighter order.
+	auto SidesMatch = [](const FNSECharacterInteractionPair& Pair, const APlayerObject* A, const APlayerObject* B)
+	{
+		const bool bSameSide = A->PlayerIndex == B->PlayerIndex;
+		return Pair.Sides == ENSEInteractionSides::Any || (Pair.Sides == ENSEInteractionSides::Teammates) == bSameSide;
+	};
+	auto AddEvents = [&](const FNSECharacterInteractionPair& Pair, const FGameplayTag& SubjectTag, const FGameplayTag& PartnerTag)
+	{
+		for (APlayerObject* Subject : Fighters)
+		{
+			if (!IsValid(Subject) || !Subject->GetCharacterTag().MatchesTagExact(SubjectTag)) continue;
+			for (APlayerObject* Partner : Fighters)
+			{
+				if (!IsValid(Partner) || Partner == Subject || !Partner->GetCharacterTag().MatchesTagExact(PartnerTag)) continue;
+				if (!SidesMatch(Pair, Subject, Partner)) continue;
+				UNSECharacterInteractionEvent* Event = NewObject<UNSECharacterInteractionEvent>(this, Pair.Event);
+				Event->GameState = this;
+				Event->Subject = Subject;
+				Event->Partner = Partner;
+				Event->Pair = Pair;
+				InteractionEvents.Add(Event);
+				UE_LOG(LogNightSkyEngine, Log, TEXT("Character interaction: %s (%s) with %s (%s) -> %s"), *Subject->GetName(),
+					*SubjectTag.ToString(), *Partner->GetName(), *PartnerTag.ToString(), *Pair.Event->GetName());
+			}
+		}
+	};
+	for (const FNSECharacterInteractionPair& Pair : InteractionPairs)
+	{
+		if (Pair.Event->HasAnyClassFlags(CLASS_Abstract)) continue;
+		AddEvents(Pair, Pair.CharacterA, Pair.CharacterB);
+		if (Pair.bSymmetric && Pair.CharacterA != Pair.CharacterB) AddEvents(Pair, Pair.CharacterB, Pair.CharacterA);
+	}
+
+	ForEachCharacterExtension([](UNSECharacterExtension* Extension) { Extension->MatchInit(); });
+}
+
+void ANightSkyGameState::RoundInitCharacterSystems()
+{
+	for (UNSECharacterInteractionEvent* Event : InteractionEvents)
+	{
+		if (Event) Event->ResetForRound();
+	}
+	ForEachCharacterExtension([](UNSECharacterExtension* Extension) { Extension->RoundInit(); });
+	QueueInteractionTrigger(ENSEInteractionTrigger::RoundStart);
+}
+
+void ANightSkyGameState::UpdateCharacterSystems()
+{
+	ForEachCharacterExtension([](UNSECharacterExtension* Extension) { Extension->Update(); });
+
+	// Running events first, so one started this frame gets its Begin now and its first Update next frame.
+	for (UNSECharacterInteractionEvent* Event : InteractionEvents)
+	{
+		if (Event && Event->bActive) Event->StepEvent();
+	}
+
+	// Triggers wait until the fighters can move (after the intro and the round start countdown).
+	if (BattleState.BattlePhase == EBattlePhase::Battle && BattleState.TimeUntilRoundStart <= 0)
+	{
+		const int32 Triggers = PendingInteractionTriggers | static_cast<int32>(ENSEInteractionTrigger::EveryFrame);
+		PendingInteractionTriggers = 0;
+		for (UNSECharacterInteractionEvent* Event : InteractionEvents)
+		{
+			if (!Event || Event->bActive) continue;
+			const int32 Matching = Event->Pair.Triggers & Triggers;
+			if (Matching == 0) continue;
+			if (Event->Pair.Repeat == ENSEInteractionRepeat::OncePerRound && Event->TimesFiredThisRound > 0) continue;
+			if (Event->Pair.Repeat == ENSEInteractionRepeat::OncePerMatch && Event->TimesFiredThisMatch > 0) continue;
+			if (!UNSECharacterLibrary::IsFighterOnScreen(Event->Subject) || !UNSECharacterLibrary::IsFighterOnScreen(Event->Partner)) continue;
+			if (!Event->CanStart()) continue;
+			const ENSEInteractionTrigger Trigger = static_cast<ENSEInteractionTrigger>(Matching & -Matching); // lowest flag
+			UE_LOG(LogNightSkyEngine, Log, TEXT("Character interaction starts (frame %d, round %d): %s, subject %s, partner %s"),
+				BattleState.FrameNumber, BattleState.RoundCount, *Event->GetClass()->GetName(), *Event->Subject->GetName(), *Event->Partner->GetName());
+			Event->StartEvent(Trigger);
+		}
+	}
+
+	for (APlayerObject* Fighter : GetRollbackPlayers())
+	{
+		if (IsFighterHeld(Fighter)) Fighter->Inputs = INP_Neutral;
+	}
+}
+
+void ANightSkyGameState::ForEachCharacterExtension(TFunctionRef<void(UNSECharacterExtension*)> Func) const
+{
+	for (const APlayerObject* Fighter : GetRollbackPlayers())
+	{
+		if (!IsValid(Fighter)) continue;
+		for (UNSECharacterExtension* Extension : Fighter->CharacterExtensions)
+		{
+			if (Extension) Func(Extension);
+		}
+	}
+}
+
+bool ANightSkyGameState::IsFighterHeld(const APlayerObject* Fighter) const
+{
+	if (!Fighter) return false;
+	for (const UNSECharacterInteractionEvent* Event : InteractionEvents)
+	{
+		if (Event && Event->bActive && ((Event->bHoldSubject && Event->Subject == Fighter) || (Event->bHoldPartner && Event->Partner == Fighter))) return true;
+	}
+	return false;
+}
+
+FGameplayTag ANightSkyGameState::GetCPUForcedState(APlayerObject* Fighter) const
+{
+	if (!Fighter) return FGameplayTag();
+	for (UNSECharacterExtension* Extension : Fighter->CharacterExtensions)
+	{
+		if (!Extension) continue;
+		const FGameplayTag State = Extension->GetCPUForcedState();
+		if (State.IsValid()) return State;
+	}
+	return FGameplayTag();
+}
+
+void ANightSkyGameState::EnterWinState(const bool bIsP1, const FGameplayTag Default, const bool bMatchWin)
+{
+	APlayerObject* Winner = GetMainPlayer(bIsP1);
+	APlayerObject* Loser = GetMainPlayer(!bIsP1);
+	if (!Winner) return;
+	// The winner's extensions first, then its teammates', then its side's assist.
+	TArray<APlayerObject*, TInlineAllocator<8>> Side;
+	Side.Add(Winner);
+	for (APlayerObject* Member : GetTeam(bIsP1)) Side.AddUnique(Member);
+	if (APlayerObject* Assist = bIsP1 ? P1Assist.Get() : P2Assist.Get(); IsValid(Assist)) Side.AddUnique(Assist);
+	FGameplayTag State = Default;
+	for (const APlayerObject* Fighter : Side)
+	{
+		bool bFound = false;
+		for (const UNSECharacterExtension* Extension : Fighter->CharacterExtensions)
+		{
+			if (!Extension) continue;
+			const FGameplayTag Override = Extension->GetVictoryState(Winner, Loser, bMatchWin);
+			if (Override.IsValid() && Winner->PrimaryStateMachine.StateNames.Contains(Override))
+			{
+				State = Override;
+				bFound = true;
+				break;
+			}
+		}
+		if (bFound) break;
+	}
+	Winner->JumpToStatePrimary(State);
+	ForEachCharacterExtension([Winner, Loser, bMatchWin](UNSECharacterExtension* Extension) { Extension->OnVictory(Winner, Loser, bMatchWin); });
+}
+
+bool ANightSkyGameState::IsVictorySequenceRunning() const
+{
+	bool bRunning = false;
+	ForEachCharacterExtension([&bRunning](UNSECharacterExtension* Extension) { bRunning |= Extension->IsVictorySequenceRunning(); });
+	return bRunning;
+}
+
+int32 ANightSkyGameState::ModifyCooldownByExtensions(const APlayerObject* Fighter, int32 Frames) const
+{
+	if (!Fighter) return Frames;
+	for (const UNSECharacterExtension* Extension : Fighter->CharacterExtensions)
+	{
+		if (Extension) Frames = Extension->ModifyCooldown(Frames);
+	}
+	return Frames;
+}
+
+bool ANightSkyGameState::CanTagByExtensions(const APlayerObject* Out, const APlayerObject* In) const
+{
+	if (Out)
+	{
+		for (const UNSECharacterExtension* Extension : Out->CharacterExtensions)
+		{
+			if (Extension && !Extension->CanTagOut(const_cast<APlayerObject*>(In))) return false;
+		}
+	}
+	if (In)
+	{
+		for (const UNSECharacterExtension* Extension : In->CharacterExtensions)
+		{
+			if (Extension && !Extension->CanBeTaggedIn(const_cast<APlayerObject*>(Out))) return false;
+		}
+	}
+	return true;
+}
+
+bool ANightSkyGameState::CanCallAssistByExtensions(const APlayerObject* Caller, const APlayerObject* Assist) const
+{
+	for (const APlayerObject* Fighter : {Caller, Assist})
+	{
+		if (!Fighter) continue;
+		for (const UNSECharacterExtension* Extension : Fighter->CharacterExtensions)
+		{
+			if (Extension && !Extension->CanCallAssist(const_cast<APlayerObject*>(Caller), const_cast<APlayerObject*>(Assist))) return false;
+		}
+	}
+	return true;
+}
+
+void ANightSkyGameState::GatherTeammateBars(const bool bIsP1, TArray<FNSETeammateBar>& OutVirtual, TArray<FNSETeammateBar>& OutRealOverrides) const
+{
+	OutVirtual.Reset();
+	OutRealOverrides.Reset();
+	if (Players.IsEmpty()) return;
+	const TArray<APlayerObject*> Team = GetTeam(bIsP1);
+	for (int32 i = 1; i < Team.Num(); i++)
+	{
+		FNSETeammateBar& Bar = OutRealOverrides.AddDefaulted_GetRef();
+		if (!Team[i]) continue;
+		Bar.Name = Team[i]->CharacterName;
+		for (const UNSECharacterExtension* Extension : Team[i]->CharacterExtensions)
+		{
+			FLinearColor Color;
+			if (Extension && Extension->GetOwnBarColor(Color))
+			{
+				Bar.bOverrideColor = true;
+				Bar.Color = Color;
+				break;
+			}
+		}
+	}
+	TArray<const APlayerObject*, TInlineAllocator<8>> Side;
+	for (const APlayerObject* Member : Team) Side.Add(Member);
+	if (const APlayerObject* Assist = bIsP1 ? P1Assist.Get() : P2Assist.Get(); IsValid(Assist)) Side.AddUnique(Assist);
+	for (const APlayerObject* Fighter : Side)
+	{
+		if (!Fighter) continue;
+		for (const UNSECharacterExtension* Extension : Fighter->CharacterExtensions)
+		{
+			if (!Extension) continue;
+			TArray<FNSETeammateBar> Bars;
+			Extension->GetVirtualTeammateBars(Bars);
+			OutVirtual.Append(Bars);
+		}
+	}
+}
+
+UNSEBattleSubtitleWidget* ANightSkyGameState::GetBattleSubtitleWidget()
+{
+	if (IsValid(BattleSubtitleWidget)) return BattleSubtitleWidget;
+	UClass* Class = GetDefault<UNightSkyBattleRules>()->BattleSubtitleWidget.LoadSynchronous();
+	if (!Class)
+	{
+		UE_LOG(LogNightSkyEngine, Warning, TEXT("Battle subtitles: no Battle Subtitle Widget (Battle Rules > Character Interactions)"));
+		return nullptr;
+	}
+	APlayerController* Controller = UGameplayStatics::GetPlayerController(this, 0);
+	BattleSubtitleWidget = Controller ? CreateWidget<UNSEBattleSubtitleWidget>(Controller, Class) : CreateWidget<UNSEBattleSubtitleWidget>(GetWorld(), Class);
+	if (BattleSubtitleWidget) BattleSubtitleWidget->AddToViewport(GetDefault<UNightSkyBattleRules>()->BattleSubtitleZOrder);
+	return BattleSubtitleWidget;
+}
+
+void ANightSkyGameState::ShowBattleSubtitle(const FText Speaker, const FText Line, const float Seconds)
+{
+	if (bIsResimulating) return;
+	// A frame re-run after a rollback load (not resimulated: the newest frame) mustn't show the line again.
+	const uint32 Key = HashCombine(HashCombine(GetTypeHash(BattleState.RoundCount), GetTypeHash(BattleState.FrameNumber)),
+		HashCombine(GetTypeHash(Line.ToString()), GetTypeHash(Speaker.ToString())));
+	if (ShownSubtitleKeys.Contains(Key)) return;
+	ShownSubtitleKeys.Add(Key);
+	SubtitleLog.Add(Speaker.IsEmpty() ? Line.ToString() : Speaker.ToString() + TEXT(": ") + Line.ToString());
+	UE_LOG(LogNightSkyEngine, Log, TEXT("Battle subtitle (frame %d): %s: %s"), BattleState.FrameNumber, *Speaker.ToString(), *Line.ToString());
+	if (UNSEBattleSubtitleWidget* Widget = GetBattleSubtitleWidget()) Widget->ShowSubtitle(Speaker, Line, Seconds);
+}
+
+void ANightSkyGameState::HideBattleSubtitle()
+{
+	if (IsValid(BattleSubtitleWidget)) BattleSubtitleWidget->HideSubtitle();
 }

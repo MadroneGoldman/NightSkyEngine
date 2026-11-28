@@ -470,6 +470,24 @@ public:
 	UPROPERTY(Transient, BlueprintReadWrite, Category="HUD")
 	TObjectPtr<class UPrimaryCharaData> CharaData;
 
+	/** Madrone change: unique battle systems for this fighter Blueprint, on top of its CHR_ asset's Character
+	 * Extensions (for fighters spawned without character data). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Character Systems")
+	TArray<TSubclassOf<class UNSECharacterExtension>> CharacterExtensionClasses;
+
+	/** Madrone change: this fighter's character tag when it has no character data (see UPrimaryCharaData). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Character Systems", meta=(Categories="Character"))
+	FGameplayTag DefaultCharacterTag;
+
+	/** Madrone change: the extension instances (made at match start by the game state; saved for rollback with the
+	 * fighter, after its state). */
+	UPROPERTY(Transient, BlueprintReadOnly, Category="Character Systems")
+	TArray<TObjectPtr<class UNSECharacterExtension>> CharacterExtensions;
+
+	/** Madrone change: CharaData's character tag, else DefaultCharacterTag. */
+	UFUNCTION(BlueprintPure, Category="Character Systems")
+	FGameplayTag GetCharacterTag() const;
+
 	/** Madrone change: the battle HUD style this fighter asks for (its CHR_ asset's, or an encounter's). Presentation
 	 * only, after PlayerSyncEnd: not rollback state. */
 	UPROPERTY(Transient, BlueprintReadWrite, Category="HUD")

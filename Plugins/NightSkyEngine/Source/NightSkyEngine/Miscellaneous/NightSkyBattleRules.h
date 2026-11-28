@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
 #include "Engine/DeveloperSettings.h"
@@ -27,6 +27,14 @@ public:
 
 	/** Damage after the simple-input reduction (integer maths, the same on every machine). */
 	static int32 ScaleSimpleInputDamage(int32 Damage);
+
+	/**
+	 * Proximity guard: holding back near an active attack puts the fighter in its guard state before the hit arrives.
+	 * Off (the default, user's choice 2026-11-27): a fighter only blocks when the hit lands, so the guard state (and its
+	 * sound) is entered once per blocked hit, never for attacks that whiff or are still out of reach.
+	 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Blocking")
+	bool bProximityGuard = false;
 
 	/**
 	 * Just Defend (Fatal Fury style): pressing back (any back direction, standing, crouching or in the air) shortly before
@@ -138,6 +146,39 @@ public:
 	 */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CPU", meta = (ClampMin = "0"))
 	int32 CPUPatienceStrength = 60;
+
+	/**
+	 * Turns auto exposure (eye adaptation) off for the whole battle: the picture keeps the brightness it had when the
+	 * battle started, so supers, darkening, flashes and camera moves don't make it brighten or dim. Presentation only.
+	 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Camera")
+	bool bDisableAutoExposureInBattle = true;
+
+	/**
+	 * With auto exposure off: lock to this fixed exposure (EV100) instead of the brightness at battle start.
+	 * Leave off to keep the battle as bright as the place it started in.
+	 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Camera", meta = (EditCondition = "bDisableAutoExposureInBattle"))
+	bool bUseFixedBattleExposure = false;
+
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Camera", meta = (EditCondition = "bDisableAutoExposureInBattle && bUseFixedBattleExposure"))
+	float FixedBattleExposureEV100 = 10.f;
+
+	/**
+	 * Madrone change: character pairs checked in every battle (when both characters are on screen together, their event
+	 * runs). CHR_ assets and game states can add their own. Docs: NSE Docs/10-Character-Systems.md.
+	 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Character Interactions")
+	TArray<TSoftObjectPtr<class UNSECharacterInteractionData>> InteractionSets;
+
+	/** Madrone change: the battle subtitle element (a UNSEBattleSubtitleWidget child). Presentation only. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Character Interactions")
+	TSoftClassPtr<class UNSEBattleSubtitleWidget> BattleSubtitleWidget = TSoftClassPtr<class UNSEBattleSubtitleWidget>(FSoftObjectPath(
+		TEXT("/WitchTools/BattleCommon/NightSkyEngine/UI/Battle/WBP_BattleSubtitle.WBP_BattleSubtitle_C")));
+
+	/** Madrone change: the subtitle element's viewport Z order. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Character Interactions")
+	int32 BattleSubtitleZOrder = 60;
 
 	virtual FName GetContainerName() const override { return TEXT("Project"); }
 	virtual FName GetCategoryName() const override { return TEXT("Night Sky Engine"); }

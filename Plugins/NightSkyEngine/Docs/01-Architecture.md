@@ -93,6 +93,10 @@ parent's hitstop through `StopLinkObj`), `Move()`, its `ObjectState->Init()` on 
   This is why `CreateCommonParticle` sets `ENiagaraAgeUpdateMode::DesiredAge`.
 * Fighter runners (`Battle/FighterRunners`): local, GGPO multiplayer, replay, and a synctest runner
   for desync debugging. `ANightSkyGameState::CreateChecksum()` hashes the state.
+  Madrone change (2026-11-26): the CPU (`ANightSkyAIController`) sets Inputs outside rollback and isn't updated while
+  resimulating, so it can't pass a synctest. Under the synctest runner neither game state makes a CPU: `ANightSkyGameState::Init`
+  ignores Is CPU Battle (a test had left it on in the game instance defaults and every stage synctest failed from the end of the
+  round intro), and `ANightSkyWTGameState` already made the overworld opponent a local player 2.
 * In the local game state header `MaxRollbackFrames = 1`. The network path uses GGPO's own buffers.
 
 ## Game modes in this fork

@@ -17,5 +17,8 @@ UE_DEFINE_GAMEPLAY_TAG_COMMENT(Sound_Hit_Slash_SP, "Sound.Hit.Slash.SP", "Slash 
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(Sound_Hit_Clash, "Sound.Hit.Clash", "Hit Clash Sound");
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(Sound_Parry, "Sound.Parry", "Successful Parry Sound");
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(Sound_JustDefend, "Sound.JustDefend", "Just Defend Sound"); // Madrone change
+UE_DEFINE_GAMEPLAY_TAG_COMMENT(Sound_Hit_Launch, "Sound.Hit.Launch", "A hit that knocks a grounded fighter into the air (a launcher)"); // Madrone change
+UE_DEFINE_GAMEPLAY_TAG_COMMENT(Sound_GroundBounce, "Sound.GroundBounce", "A fighter bouncing off the ground from a ground-bounce hit"); // Madrone change
+UE_DEFINE_GAMEPLAY_TAG_COMMENT(Sound_WallBounce, "Sound.WallBounce", "A fighter bouncing off a wall from a wall-bounce hit (with Sound.Landing.Crash)"); // Madrone change
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(Sound_Land, "Sound.Land", "Landing Sound");
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(Sound_Landing_Crash, "Sound.Landing.Crash", "Landing Sound (Crash)");

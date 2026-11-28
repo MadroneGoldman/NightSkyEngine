@@ -15,6 +15,7 @@
 #include "NightSkyEngine/UI/NightSkyBattleHudActor.h"
 #include "NightSkyEngine/UI/NightSkyBattleWidget.h"
 
+#include "NightSkyEngine/Data/PrimaryCharaData.h" // Madrone change
 #include UE_INLINE_GENERATED_CPP_BY_NAME(PlayerObject)
 
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(State_Label_Blowback_1, "State.Label.Blowback.1", "Blowback Label 1");
@@ -937,6 +938,14 @@ void APlayerObject::HandleHitAction(EHitAction HACT)
 
 	Hitstop = FinalHitstop;
 
+	// Madrone change: a hit that knocks a grounded fighter into the air (a launcher) plays Sound.Hit.Launch from the common
+	// sound data, on top of the hit's own sound. Same grounded test as the callers use to pick the ground hit action.
+	if (PosY == GroundHeight && !(PlayerFlags & PLF_IsKnockedDown)
+		&& (HACT == HACT_AirNormal || HACT == HACT_AirFaceUp || HACT == HACT_AirVertical || HACT == HACT_AirFaceDown))
+	{
+		PlayCommonSound(Sound_Hit_Launch);
+	}
+
 	int32 Proration = ReceivedHit.ForcedProration;
 	if (Enemy->ComboCounter == 0)
 		Proration *= ReceivedHit.InitialProration;
@@ -1699,6 +1708,10 @@ void APlayerObject::StopLevelSequence()
 void APlayerObject::BattleHudVisibility(bool Visible)
 {
 	if (!GameState) return;
+	// Madrone change: a fighter that isn't its side's main player any more can't hide the HUD. In a tag battle the next
+	// teammate's round starts (RoundInit shows the HUD) while the KO'd one's KO object (ST_CommonKO*) is still about to
+	// hide it for the KO, and nothing shows it again (Golden Boy swooning out after Boy Mom's tag: HUD gone for the fight).
+	if (!Visible && !IsMainPlayer()) return;
 	GameState->BattleHudVisibility(Visible);
 }
 
@@ -1757,10 +1770,22 @@ void APlayerObject::SetTeamCooldown(int NewTeamIndex, int Cooldown)
 	// Madrone change: a dedicated assist (outside the team) sets its side's assist cooldown, not a team member's.
 	if (this == GameState->P1Assist || this == GameState->P2Assist)
 	{
-		GameState->BattleState.AssistCooldownTimer[this == GameState->P1Assist ? 0 : 1] = FMath::Max(Cooldown, GameState->BattleState.AssistCooldown);
+		GameState->BattleState.AssistCooldownTimer[this == GameState->P1Assist ? 0 : 1] = GameState->ModifyCooldownByExtensions(this,
+			FMath::Max(Cooldown, GameState->BattleState.AssistCooldown)); // Madrone change: character extensions
 		return;
 	}
 	return GameState->SetTeamCooldown(PlayerIndex == 0, NewTeamIndex, Cooldown);
+}
+
+// Madrone change: character systems
+FGameplayTag APlayerObject::GetCharacterTag() const
+{
+	if (CharaData)
+	{
+		const FGameplayTag Tag = CharaData->GetCharacterTag();
+		if (Tag.IsValid()) return Tag;
+	}
+	return DefaultCharacterTag;
 }
 
 bool APlayerObject::IsMainPlayer() const
@@ -1804,6 +1829,13 @@ void APlayerObject::ToggleComponentVisibility(FName ComponentName, bool Visible)
 bool APlayerObject::CanEnterState(UState* State, FGameplayTag StateMachineName)
 {
 	FStateMachine& StateMachine = GetStateMachine(StateMachineName);
+	// Madrone change: no move (typed, CPU or Baroque Cancel) while this fighter holds the enemy in a throw. A throw's
+	// damage before its release enables special cancels like a hit, and leaving the throw before the release left the
+	// victim locked, ragdolled and pinned to the thrower for the rest of the round (Gas Attendant's OMF).
+	if (StateMachineName == StateMachine_Primary && Enemy && Enemy->PlayerFlags & PLF_IsThrowLock && Enemy->AttackOwner == this)
+	{
+		return false;
+	}
 	const FGameplayTag MoveChainName = State->ShareChainName != FGameplayTag::EmptyTag
 		                                   ? State->ShareChainName
 		                                   : State->Name;
@@ -2336,6 +2368,10 @@ void APlayerObject::HandleProximityBlock()
 	}
 	if (!(GetEnableFlags(StateMachine_Primary) & ENB_ProximityBlock))
 		return;
+	// Madrone change: proximity guard is a battle rule, off by default (it entered the guard state, with its sound,
+	// before hits that then whiffed or were blocked again on arrival).
+	if (!GetDefault<UNightSkyBattleRules>()->bProximityGuard)
+		return;
 	// Madrone change: no proximity guard under training auto guard. The dummy blocks once, when the hit arrives (auto
 	// guard picks the stance), instead of entering the guard state early and again on the hit (the block state's sound
 	// played twice).
@@ -2778,6 +2814,7 @@ void APlayerObject::HandleWallBounce()
 			if (ReceivedHit.WallBounce.WallBounceCount > 0)
 			{
 				PlayCommonSound(Sound_Landing_Crash);
+				PlayCommonSound(Sound_WallBounce); // Madrone change
 				CreateCommonParticle(Particle_WallBounce, POS_Self);
 				ReceivedHit.GroundBounce.GroundBounceCount = 0;
 				PlayerFlags &= ~PLF_TouchingWall;
@@ -2815,6 +2852,7 @@ void APlayerObject::HandleWallBounce()
 		if (ReceivedHit.WallBounce.WallBounceCount > 0)
 		{
 			PlayCommonSound(Sound_Landing_Crash);
+			PlayCommonSound(Sound_WallBounce); // Madrone change
 			CreateCommonParticle(Particle_WallBounce, POS_Self);
 			ReceivedHit.GroundBounce.GroundBounceCount = 0;
 			PlayerFlags &= ~PLF_TouchingWall;
@@ -2850,6 +2888,7 @@ void APlayerObject::HandleWallBounce()
 void APlayerObject::HandleGroundBounce()
 {
 	CreateCommonParticle(Particle_JumpSmoke_Land, POS_Player);
+	PlayCommonSound(Sound_GroundBounce); // Madrone change
 	ReceivedHit.GroundBounce.GroundBounceCount--;
 	ReceivedHit.GroundPushbackX = 0;
 	if (SpeedX > 0)
@@ -3393,6 +3432,8 @@ void APlayerObject::PostStateChange()
 {
 	// Madrone change: each state starts with its own foot IK (before the subroutines, which may change it).
 	if (PrimaryStateMachine.CurrentState) SetFootIK(PrimaryStateMachine.CurrentState->FootIK);
+	// Madrone change: the state's own start sound (UState::EnterSound), data instead of a PlaySound node in its graph.
+	if (PrimaryStateMachine.CurrentState) PrimaryStateMachine.CurrentState->PlayEnterSound();
 
 	CallSubroutine(Subroutine_Cmn_PostStateChange);
 	CallSubroutine(Subroutine_PostStateChange);

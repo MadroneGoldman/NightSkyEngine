@@ -23,6 +23,9 @@ UE_DECLARE_GAMEPLAY_TAG_EXTERN(Sound_Hit_Clash);
 UE_DECLARE_GAMEPLAY_TAG_EXTERN(Sound_Parry);
 UE_DECLARE_GAMEPLAY_TAG_EXTERN(Sound_Guard);
 UE_DECLARE_GAMEPLAY_TAG_EXTERN(Sound_JustDefend); // Madrone change
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(Sound_Hit_Launch); // Madrone change
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(Sound_GroundBounce); // Madrone change
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(Sound_WallBounce); // Madrone change
 UE_DECLARE_GAMEPLAY_TAG_EXTERN(Sound_Land);
 UE_DECLARE_GAMEPLAY_TAG_EXTERN(Sound_Landing_Crash);
 

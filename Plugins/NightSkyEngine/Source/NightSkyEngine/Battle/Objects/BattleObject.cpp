@@ -24,6 +24,18 @@
 #include UE_INLINE_GENERATED_CPP_BY_NAME(BattleObject)
 
 // Sets default values
+FOnNightSkyHitLanded ABattleObject::OnHitLanded; // Madrone change
+
+// Madrone change: the world position CreateCommonParticle uses for a PosType.
+FVector ABattleObject::PosTypeToWorld(EPosType Type) const
+{
+	int32 X = 0, Y = 0;
+	PosTypeToPosition(Type, X, Y);
+	const FVector Local(X / COORD_SCALE, 0, Y / COORD_SCALE);
+	if (!GameState) return Local;
+	return GameState->BattleSceneTransform.GetRotation().RotateVector(Local) + GameState->BattleSceneTransform.GetLocation();
+}
+
 ABattleObject::ABattleObject()
 {
 	// Set this pawn to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
@@ -871,6 +883,7 @@ void ABattleObject::HandleHitCollision(ABattleObject* AttackedObj)
 				                     FVector(0, 0, 0),
 				                     FRotator(HitCommon.HitAngle, 0, 0));
 				PlayCommonSound(HitCommon.HitSFX);
+				if (!GameState->IsResimulating()) OnHitLanded.Broadcast(this, AttackedPlayer, PosTypeToWorld(POS_Col), Data.Damage, false); // Madrone change
 				AttackedPlayer->ReceivedHitCommon = HitCommon;
 				AttackedPlayer->ReceivedHit = Data;
 				EHitAction HACT;
@@ -925,6 +938,7 @@ void ABattleObject::HandleHitCollision(ABattleObject* AttackedObj)
 				CreateCommonParticle(HitCommon.HitVFX, POS_Col, FVector(0, 0, 0),
 				                     FRotator(HitCommon.HitAngle, 0, 0));
 				PlayCommonSound(HitCommon.HitSFX);
+				if (!GameState->IsResimulating()) OnHitLanded.Broadcast(this, AttackedPlayer, PosTypeToWorld(POS_Col), CounterData.Damage, true); // Madrone change
 				AttackedPlayer->ReceivedHitCommon = HitCommon;
 				AttackedPlayer->ReceivedHit = CounterData;
 				EHitAction HACT;
@@ -2239,6 +2253,7 @@ void ABattleObject::InitObject()
 	}
 	ObjectState->Parent = this;
 	ObjectState->Init();
+	ObjectState->PlayEnterSound(); // Madrone change: the object state's spawn sound (UState::EnterSound)
 	FVector Location = FVector(static_cast<float>(PosX) / COORD_SCALE, static_cast<float>(PosZ) / COORD_SCALE,
 	                           static_cast<float>(PosY) / COORD_SCALE);
 	Location = GameState->BattleSceneTransform.GetRotation().RotateVector(Location) + GameState->BattleSceneTransform.

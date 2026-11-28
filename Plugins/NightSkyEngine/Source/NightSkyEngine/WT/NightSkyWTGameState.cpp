@@ -390,6 +390,13 @@ void ANightSkyWTGameState::Tick(float DeltaTime)
 
 	if (bViewCollision && HasBattleFloor()) DrawBattleFloor();
 	if (bViewCollision && bIsBattling) DrawStageWalls(); // Madrone change
+	// Madrone change: this game state lives on between overworld battles (its BeginPlay isn't NSE's), so auto exposure
+	// is turned off while a battle runs and back on after it.
+	if (bIsBattling != IsValid(ExposureLockActor))
+	{
+		if (bIsBattling) ApplyBattleExposureLock();
+		else RemoveBattleExposureLock();
+	}
 	
 	if (bIsBattling && IsValid(FighterRunner))
 		FighterRunner->Update(DeltaTime);

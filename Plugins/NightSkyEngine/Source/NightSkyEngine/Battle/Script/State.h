@@ -11,6 +11,7 @@
 
 class APlayerObject;
 class ABattleObject;
+class USoundBase;
 
 /**
  * What stance the character must be in to enter this state.
@@ -495,6 +496,18 @@ public:
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Visual")
 	EFootIK FootIK = EFootIK::BothFeet;
+	/**
+	 * Madrone change: a sound played when this state starts: a player state when the fighter enters it, an object state
+	 * when its object is spawned. It goes through the game state's character audio channels (2D, like PlayCharaSound), so
+	 * a rollback doesn't play it twice. Optional; a SoundCue with a Random node gives a different take each time.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Sound")
+	TObjectPtr<USoundBase> EnterSound;
+	/** Madrone change: seconds after which Enter Sound is cut and its channel freed. 0: the sound's own length. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Sound", meta = (ClampMin = "0", Units = "s"))
+	float EnterSoundMaxDuration = 0.f;
+	/** Madrone change: plays Enter Sound for Parent. NSE calls it on entering the state (player) or spawning (object). */
+	void PlayEnterSound() const;
 
 	UFUNCTION(BlueprintImplementableEvent)
 	void Init();

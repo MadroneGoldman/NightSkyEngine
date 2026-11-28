@@ -8,6 +8,8 @@
 #include "GameFramework/GameStateBase.h"
 #include "include/ggponet.h"
 #include "Misc/RandomManager.h"
+#include "Script/NSECharacterExtension.h" // Madrone change
+#include "Script/NSECharacterInteraction.h" // Madrone change
 #include "NightSkyGameState.generated.h"
 
 class UBattleExtensionData;
@@ -317,7 +319,13 @@ public:
 	/** Madrone change: Baroque Cancel looks (screen darkening, afterimages). Presentation only, not rollback state. */
 	UPROPERTY(Transient)
 	TObjectPtr<class UBaroqueCancelVisuals> BaroqueVisuals;
-	
+
+	/** Madrone change: holds the unbound post process that turns auto exposure off for the battle (Battle Rules > Camera). */
+	UPROPERTY(Transient)
+	TObjectPtr<AActor> ExposureLockActor;
+	void ApplyBattleExposureLock();
+	void RemoveBattleExposureLock();
+
 	UPROPERTY()
 	TArray<ABattleObject*> SortedObjects {};
 	/* Madrone change: SortedObjects as first built (players, assists, then the object pool), never reordered. SortObjects
@@ -354,6 +362,79 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Assets)
 	UBattleExtensionData* BattleExtensionData = {};
+
+	// ---------------------------------------------------------------- Madrone change: character systems
+	// Character extensions (per fighter) and character interactions (pairs on screen together). Docs:
+	// Plugins/NightSkyEngine/Docs/10-Character-Systems.md.
+
+	/** Pairs for battles with this game state, on top of Battle Rules' Interaction Sets and the CHR_ assets' own. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Character Systems")
+	TArray<TObjectPtr<class UNSECharacterInteractionData>> CharacterInteractionData;
+
+	/** Every pair registered for this match (built at match start): Battle Rules', this game state's, the CHR_ assets'. */
+	UPROPERTY(Transient, BlueprintReadOnly, Category="Character Systems")
+	TArray<FNSECharacterInteractionPair> InteractionPairs;
+
+	/** Character tag -> indices into InteractionPairs it takes part in (as A or B). Built at match start, constant. */
+	TMap<FGameplayTag, TArray<int32>> InteractionPairsByCharacter;
+
+	/** One event per pair of fighters in this match that matches a pair entry, in a fixed order (rollback layout).
+	 * Each saves its SaveGame properties for rollback after the battle extensions. */
+	UPROPERTY(Transient, BlueprintReadOnly, Category="Character Systems")
+	TArray<TObjectPtr<class UNSECharacterInteractionEvent>> InteractionEvents;
+
+	/** Triggers that happened and wait to be checked (ENSEInteractionTrigger flags). Rollback state. */
+	UPROPERTY(SaveGame)
+	int32 PendingInteractionTriggers = 0;
+
+	/** Makes the fighters' extensions and the interaction events for this match. From MatchInit / MatchInitWt. */
+	void InitCharacterSystems();
+	/** Round start: stops running events, extensions' RoundInit, queues the RoundStart check. From RoundInit. */
+	void RoundInitCharacterSystems();
+	/** Every battle frame (not during a super freeze), after the inputs: extensions' Update, then triggers, then events. */
+	void UpdateCharacterSystems();
+	/** Something that can bring a pair together happened (checked on the next character systems update). */
+	void QueueInteractionTrigger(ENSEInteractionTrigger Trigger) { PendingInteractionTriggers |= static_cast<int32>(Trigger); }
+	/** Every fighter's extensions, in rollback order (Players, then the assists). */
+	void ForEachCharacterExtension(TFunctionRef<void(class UNSECharacterExtension*)> Func) const;
+	/** True while an interaction event holds the fighter (no player or CPU inputs). */
+	UFUNCTION(BlueprintPure, Category="Character Systems")
+	bool IsFighterHeld(const APlayerObject* Fighter) const;
+	/** The state the CPU must enter now for this fighter (its extensions' GetCPUForcedState), or empty. */
+	FGameplayTag GetCPUForcedState(APlayerObject* Fighter) const;
+	/** The winner's win state: an extension's override, else Default. Then tells every extension (OnVictory). */
+	void EnterWinState(bool bIsP1, FGameplayTag Default, bool bMatchWin);
+	/** An extension's victory sequence is still playing (IsVictorySequenceRunning): the match / round waits. */
+	UFUNCTION(BlueprintPure, Category="Character Systems")
+	bool IsVictorySequenceRunning() const;
+	/** The cooldown Fighter's extensions give it (ModifyCooldown). */
+	int32 ModifyCooldownByExtensions(const APlayerObject* Fighter, int32 Frames) const;
+	bool CanTagByExtensions(const APlayerObject* Out, const APlayerObject* In) const;
+	bool CanCallAssistByExtensions(const APlayerObject* Caller, const APlayerObject* Assist) const;
+	/** Extra teammate bars (and recoloured real ones) for a side, from its fighters' extensions. HUD only. */
+	void GatherTeammateBars(bool bIsP1, TArray<FNSETeammateBar>& OutVirtual, TArray<FNSETeammateBar>& OutRealOverrides) const;
+
+	/**
+	 * Shows a line on the battle screen in the shared subtitle element (Battle Rules > Battle Subtitle Widget, styled like
+	 * Narrative's dialogue subtitles). Presentation only: skipped while resimulating, and the same line isn't shown twice
+	 * for one battle frame (a frame re-run after a rollback). Seconds of real time.
+	 */
+	UFUNCTION(BlueprintCallable, Category="Character Systems|Subtitles")
+	void ShowBattleSubtitle(FText Speaker, FText Line, float Seconds = 3.f);
+	UFUNCTION(BlueprintCallable, Category="Character Systems|Subtitles")
+	void HideBattleSubtitle();
+	/** The subtitle element (made on first use). */
+	UFUNCTION(BlueprintCallable, Category="Character Systems|Subtitles")
+	class UNSEBattleSubtitleWidget* GetBattleSubtitleWidget();
+	/** Subtitles shown this battle: speaker and line (tests). */
+	UPROPERTY(Transient, BlueprintReadOnly, Category="Character Systems|Subtitles")
+	TArray<FString> SubtitleLog;
+private:
+	UPROPERTY(Transient)
+	TObjectPtr<class UNSEBattleSubtitleWidget> BattleSubtitleWidget;
+	/** Lines already shown, by round, frame and text (presentation). */
+	TSet<uint32> ShownSubtitleKeys;
+public:
 
 	UPROPERTY()
 	class UNightSkyGameInstance* GameInstance = nullptr;

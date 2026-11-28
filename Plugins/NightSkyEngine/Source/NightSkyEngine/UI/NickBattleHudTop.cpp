@@ -20,6 +20,7 @@
 #include "NightSkyEngine/Battle/NightSkyGameState.h"
 #include "NightSkyEngine/Battle/Objects/PlayerObject.h"
 #include "NightSkyEngine/UI/NightSkyBattleHudActor.h"
+#include "NightSkyEngine/Battle/Script/NSECharacterExtension.h" // Madrone change
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(NickBattleHudTop)
 
@@ -91,6 +92,12 @@ void UNickBattleHudTop::OnMainPlayersChanged()
 	if (P1HealthBar) P1HealthBar->SetMainPlayerIndex(0);
 	if (P2HealthBar) P2HealthBar->SetMainPlayerIndex(0);
 	RefreshPlayerNames();
+}
+
+// Madrone change: character-extension bars
+void UNickBattleHudTop::SetCharacterTeammateBars(const bool bIsP1, const TArray<FNSETeammateBar>& Virtual, const TArray<FNSETeammateBar>& RealOverrides)
+{
+	if (UTeammateBarBox* Box = bIsP1 ? P1TeammateBox : P2TeammateBox) Box->SetCharacterBars(Virtual, RealOverrides);
 }
 
 void UNickBattleHudTop::NativeOnInitialized()
@@ -304,12 +311,172 @@ void UNickBattleHudTop::NativeTick(const FGeometry& MyGeometry, const float InDe
 		if (!AssistBox[Side]) continue;
 		const bool bHasAssist = ShownAssist[Side].IsValid();
 		const int32 AssistSeconds = CooldownSeconds(Side == 0 ? P1AssistCooldown : P2AssistCooldown);
-		AssistText[Side]->SetText(AssistSeconds > 0 ? FText::AsNumber(AssistSeconds) : FText::GetEmpty());
+		// Madrone change: a "forever" cooldown (a character extension's) shows no number: never ready
+		const bool bNeverReady = (Side == 0 ? P1AssistCooldown : P2AssistCooldown) >= NSECooldownForever;
+		AssistText[Side]->SetText(AssistSeconds > 0 && !bNeverReady ? FText::AsNumber(AssistSeconds) : FText::GetEmpty());
 		AssistShade[Side]->SetBrushColor(FLinearColor(0.f, 0.f, 0.f, AssistSeconds > 0 ? 0.65f : 0.f));
 		AssistFrame[Side]->SetBrushColor(AssistSeconds > 0 ? Cooling : ReadyPulse);
 		AssistFrame[Side]->SetPadding(FMargin(AssistSeconds > 0 ? 2.f : 4.f));
 		if (bSounds && bHasAssist && LastAssistSeconds[Side] > 0 && AssistSeconds == 0) PlayReadySound();
 		LastAssistSeconds[Side] = bHasAssist ? AssistSeconds : 0;
+	}
+	UpdateRoundHearts(); // Madrone change
+	UpdateComboCounters(InDeltaTime); // Madrone change
+}
+
+// ------------------------------------------------------------------------------------- Madrone change: round hearts
+
+void UNickBattleHudTop::UpdateRoundHearts()
+{
+	if (!bRoundHearts) return;
+	if (!bHeartTexturesLoaded)
+	{
+		LoadedHeartFull = RoundHeartFull.LoadSynchronous();
+		LoadedHeartLost = RoundHeartLost.LoadSynchronous();
+		bHeartTexturesLoaded = true;
+	}
+	if (!LoadedHeartFull || !LoadedHeartLost) return;
+	for (int32 Side = 0; Side < 2; Side++)
+	{
+		// a side's hearts are the rounds it can still lose: one goes black for each round the other side won
+		const int32 Lost = Side == 0 ? P2RoundsWon : P1RoundsWon;
+		for (int32 Round = 1; Round <= 9; Round++)
+		{
+			UImage* Image = Cast<UImage>(GetWidgetFromName(*FString::Printf(TEXT("P%dRound%d"), Side + 1, Round)));
+			if (!Image) break;
+			// the Blueprint colours its round marks with a binding (won = lit): the hearts carry their own colours
+			if (Image->ColorAndOpacityDelegate.IsBound()) Image->ColorAndOpacityDelegate.Unbind();
+			// the round ticks are thin slanted bars (sheared, player 2's mirrored): lay the hearts out upright, square,
+			// in a row from the first mark outwards
+			if (!Image->GetRenderTransform().Shear.IsNearlyZero() || Image->GetRenderTransform().Scale.X < 0.f)
+			{
+				Image->SetRenderTransform(FWidgetTransform());
+				const UImage* First = Cast<UImage>(GetWidgetFromName(*FString::Printf(TEXT("P%dRound1"), Side + 1)));
+				UCanvasPanelSlot* HeartSlot = Cast<UCanvasPanelSlot>(Image->Slot);
+				const UCanvasPanelSlot* FirstSlot = First ? Cast<UCanvasPanelSlot>(First->Slot) : nullptr;
+				if (HeartSlot && FirstSlot)
+				{
+					constexpr float HeartSize = 32.f;
+					constexpr float HeartGap = 6.f;
+					const float Outward = Side == 0 ? -1.f : 1.f;
+					FVector2D Position = FirstSlot->GetPosition();
+					if (Round == 1) Position.X += Outward * HeartSize * 0.5f; // clear of the timer
+					else Position.X += Outward * (Round - 1) * (HeartSize + HeartGap); // the first is laid out already
+					HeartSlot->SetPosition(Position);
+					HeartSlot->SetSize(FVector2D(HeartSize, HeartSize));
+				}
+			}
+			UTexture2D* Texture = Round <= Lost ? LoadedHeartLost.Get() : LoadedHeartFull.Get();
+			if (Image->GetBrush().GetResourceObject() != Texture)
+			{
+				FSlateBrush Brush = Image->GetBrush();
+				Brush.SetResourceObject(Texture);
+				Brush.DrawAs = ESlateBrushDrawType::Image;
+				Image->SetBrush(Brush);
+			}
+			Image->SetColorAndOpacity(FLinearColor::White);
+		}
+	}
+}
+
+// ------------------------------------------------------------------------------------ Madrone change: combo counter
+
+FLinearColor UNickBattleHudTop::ComboColor(const int32 Hits) const
+{
+	// white at 1, light blue at 2, then warming through yellow and orange to red at Combo Red Hits
+	if (Hits <= 1) return FLinearColor::White;
+	struct FKey { float T; FLinearColor C; };
+	const FKey Keys[] = {
+		{0.f, ComboColdColor},
+		{0.4f, FLinearColor(1.f, 0.93f, 0.45f)},
+		{0.7f, FLinearColor(1.f, 0.55f, 0.15f)},
+		{1.f, ComboHotColor},
+	};
+	const float T = FMath::Clamp((Hits - 2.f) / FMath::Max(ComboRedHits - 2.f, 1.f), 0.f, 1.f);
+	for (int32 i = 1; i < UE_ARRAY_COUNT(Keys); i++)
+	{
+		if (T <= Keys[i].T)
+		{
+			const float A = (T - Keys[i - 1].T) / (Keys[i].T - Keys[i - 1].T);
+			return FLinearColor::LerpUsingHSV(Keys[i - 1].C, Keys[i].C, A);
+		}
+	}
+	return ComboHotColor;
+}
+
+void UNickBattleHudTop::UpdateComboCounters(const float DeltaTime)
+{
+	if (!bStyledComboCounter) return;
+	if (!bComboFontLoaded)
+	{
+		LoadedComboFont = ComboFont.LoadSynchronous();
+		bComboFontLoaded = true;
+	}
+	const UWorld* World = GetWorld();
+	const float Time = World ? World->GetRealTimeSeconds() : 0.f;
+	for (int32 Side = 0; Side < 2; Side++)
+	{
+		UTextBlock* Text = Cast<UTextBlock>(GetWidgetFromName(Side == 0 ? TEXT("P1ComboText") : TEXT("P2ComboText")));
+		if (!Text) continue;
+		const int32 Hits = Side == 0 ? P1ComboCounter : P2ComboCounter;
+		const bool bBoiling = Hits > ComboRedHits;
+		FSlateFontInfo Font = Text->GetFont();
+		if (LoadedComboFont)
+		{
+			Font.FontObject = LoadedComboFont;
+			Font.TypefaceFontName = NAME_None;
+		}
+		Font.Size = ComboFontSize;
+		if (bBoiling)
+		{
+			// pink glow: a thick pink outline that breathes
+			const float Breathe = 0.5f + 0.5f * FMath::Sin(Time * UE_TWO_PI * 1.6f);
+			Font.OutlineSettings.OutlineSize = FMath::RoundToInt(FMath::Lerp(4.f, 8.f, Breathe));
+			Font.OutlineSettings.OutlineColor = ComboGlowColor * FLinearColor(1.f, 1.f, 1.f, FMath::Lerp(0.55f, 1.f, Breathe));
+		}
+		else
+		{
+			Font.OutlineSettings.OutlineSize = 4;
+			Font.OutlineSettings.OutlineColor = FLinearColor::Black;
+		}
+		Text->SetFont(Font);
+		Text->SetColorAndOpacity(FSlateColor(ComboColor(Hits)));
+
+		// boiling: the number wobbles on a hand-drawn "boil" beat (a new random pose a few times a second). The
+		// Blueprint's combo animation may move the text too: the wobble is added to whatever it set this frame.
+		const FWidgetTransform Current = Text->GetRenderTransform();
+		const bool bOurs = ComboBoilApplied[Side].IsSet()
+			&& Current.Translation.Equals(ComboBoilApplied[Side]->Translation)
+			&& FMath::IsNearlyEqual(Current.Angle, ComboBoilApplied[Side]->Angle)
+			&& Current.Shear.Equals(ComboBoilApplied[Side]->Shear)
+			&& Current.Scale.Equals(ComboBoilApplied[Side]->Scale);
+		const FWidgetTransform Base = bOurs ? ComboBoilBase[Side] : Current;
+		FWidgetTransform Result = Base;
+		if (bBoiling)
+		{
+			ComboBoilTimer[Side] -= DeltaTime;
+			if (ComboBoilTimer[Side] <= 0.f)
+			{
+				ComboBoilTimer[Side] = 1.f / FMath::Max(ComboBoilRate, 1.f);
+				const float Heat = FMath::Clamp((Hits - ComboRedHits) / 10.f, 0.f, 1.f); // bigger combos boil harder
+				const float Amount = FMath::Lerp(1.f, 2.f, Heat);
+				ComboBoilPose[Side].Translation = FVector2D(FMath::FRandRange(-3.f, 3.f), FMath::FRandRange(-4.f, 2.f)) * Amount;
+				ComboBoilPose[Side].Angle = FMath::FRandRange(-3.f, 3.f) * Amount;
+				ComboBoilPose[Side].Shear = FVector2D(FMath::FRandRange(-0.06f, 0.06f), 0.f) * Amount;
+				ComboBoilPose[Side].Scale = FVector2D(1.f + FMath::FRandRange(-0.03f, 0.05f) * Amount, 1.f + FMath::FRandRange(-0.03f, 0.06f) * Amount);
+			}
+			Result.Translation += ComboBoilPose[Side].Translation;
+			Result.Angle += ComboBoilPose[Side].Angle;
+			Result.Shear += ComboBoilPose[Side].Shear;
+			Result.Scale *= ComboBoilPose[Side].Scale;
+		}
+		if (bBoiling || bOurs)
+		{
+			Text->SetRenderTransform(Result);
+			ComboBoilBase[Side] = Base;
+			ComboBoilApplied[Side] = Result;
+		}
+		if (!bBoiling) ComboBoilApplied[Side].Reset();
 	}
 }
 

@@ -155,6 +155,11 @@ public:
 
 	/** Madrone change: the fighter on screen changed on a side (a tag), also after a rollback undid one. */
 	virtual void OnMainPlayersChanged() {}
+
+	/** Madrone change: a side's character-extension teammate bars, every HUD update (never while resimulating):
+	 * Virtual = extra bars after the real tag partners' ones; RealOverrides = one entry per real partner (team index
+	 * 1..), a recolour when bOverrideColor. Default: nothing (the Nick HUD shows them in its teammate boxes). */
+	virtual void SetCharacterTeammateBars(bool bIsP1, const TArray<struct FNSETeammateBar>& Virtual, const TArray<struct FNSETeammateBar>& RealOverrides) {}
 	
 	void PlayStandardAnimations();
 	void SetAnimationRollbackData();

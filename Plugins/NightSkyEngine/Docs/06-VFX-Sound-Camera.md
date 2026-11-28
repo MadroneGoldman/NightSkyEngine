@@ -38,6 +38,11 @@ or the editor flags the asset with "Invalid GameplayTag" warnings.
   Each entry has a `MaxDuration` that caps the play length (and the rollback bookkeeping).
 * Engine sounds: `Sound.Hit.<Punch|Kick|Slash>.<S|M|L|SP>` (from `SFXType` + level, or `HitSFXOverride`),
   `Sound.Guard`, `Sound.Parry`, `Sound.Hit.Clash`, `Sound.Land`, `Sound.Landing.Crash`.
+  Madrone changes: `Sound.JustDefend`; `Sound.Hit.Launch` (`APlayerObject::HandleHitAction`, a hit that knocks a grounded
+  fighter into the air, on top of the hit sound); `Sound.GroundBounce` (`HandleGroundBounce`); `Sound.WallBounce` (`HandleWallBounce`, with `Sound.Landing.Crash`). All from `CommonSoundData`.
+* Madrone change: `UState::EnterSound` (+ `EnterSoundMaxDuration`, 0 = the sound's length) plays through `PlayCharaAudio` when a
+  player state is entered (`APlayerObject::PostStateChange`) or an object state's object is spawned (`ABattleObject::InitObject`).
+  A data field instead of a PlaySound node in the state graph.
 * `AAudioManager` keeps the battle audio in sync with re-simulated frames.
 * Announcer and music: `UNightSkyGameInstance::AnnouncerData` and `MusicData` (`USoundData`). The game
   instance `BattleData.MusicName` picks the track. In this project `BP_NightSkyGameInstance.MusicData`

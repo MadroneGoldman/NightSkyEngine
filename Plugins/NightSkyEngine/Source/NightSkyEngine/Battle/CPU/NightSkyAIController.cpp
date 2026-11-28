@@ -41,6 +41,20 @@ void ANightSkyAIController::Update()
 
 	if (Player->CurrentHealth <= 0) return;
 
+	// Madrone change: an interaction event holding this fighter (no decisions), or an extension forcing a state
+	if (GameState->IsFighterHeld(Player))
+	{
+		Player->StoredInputBuffer.Update(INP_Neutral);
+		return;
+	}
+	if (const FGameplayTag Forced = GameState->GetCPUForcedState(Player); Forced.IsValid()
+		&& Player->PrimaryStateMachine.StateNames.Contains(Forced) && Player->GetCurrentStateName(StateMachine_Primary) != Forced)
+	{
+		Player->StoredInputBuffer.Update(INP_Neutral);
+		Player->SetStateForCPU(Forced, StateMachine_Primary);
+		return;
+	}
+
 	Player->StoredInputBuffer.Update(INP_Neutral);
 	bBlock = false;
 	

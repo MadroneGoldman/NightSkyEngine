@@ -99,3 +99,16 @@
   `UNightSkyBattleInputComponent::FindOn(Controller)`, never by casting to `ANightSkyPlayerController`. A Narrative or
   other game controller won't be one.
 * Fixed while moving input to the component: `PressB` was only bound when `PressA` was valid (copy-paste check).
+
+## Tag battles: HUD after a KO, match end (Madrone change, 2026-11-27)
+
+- A KO'd fighter's KO object (`ST_CommonKO*`) hides the battle HUD (`BattleHudVisibility(false)`). Every `RoundInit`
+  branch showed it again except the tag one (a KO'd point fighter replaced mid-match), so after a teammate went down the
+  HUD stayed gone for the rest of the fight. The tag branch now sets `bHUDVisible`, and a fighter that isn't its side's
+  main player can't hide the HUD (`APlayerObject::BattleHudVisibility`).
+- `HandleMatchWin` (Tag / KOF) compared the two sides' KO counts with each other: after one KO each, a side with every
+  fighter down didn't lose, and `RoundInit` ran every frame (`SwitchMainPlayer` had nobody to bring in). A side now wins
+  when the other side's KOs reach its team size and its own fighters aren't all down.
+- Throws: `CanEnterState` refuses primary states while the fighter holds the enemy in a throw lock (a throw's damage
+  enabled special cancels, and leaving the throw before its release never released the victim).
+- Proximity guard is a battle rule, `UNightSkyBattleRules::bProximityGuard`, default off.

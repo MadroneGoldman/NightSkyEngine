@@ -212,7 +212,8 @@ enum EHitAction
 	HACT_Custom UMETA(DisplayName="Custom"),
 };
 
-UENUM()
+// Madrone change: BlueprintType, for tools (battle props' elemental hits). See Docs/11-Elemental-Hits.md.
+UENUM(BlueprintType)
 enum ESpecialHitAction
 {
 	HACTS_None UMETA(DisplayName="None"),
@@ -639,6 +640,11 @@ struct FSuperArmorData
  * A battle object.
  * These are any objects that affect gameplay, or need values to change after being spawned.
  */
+/** Madrone change: a hit landed on a fighter (not blocked, armored or parried). Attacker, victim, where (world, the hit
+ * effect's spot), the hit's damage, counter hit. Never during rollback resimulation, so it is safe for visuals only. */
+DECLARE_MULTICAST_DELEGATE_FiveParams(FOnNightSkyHitLanded, ABattleObject* /*Attacker*/, APlayerObject* /*Victim*/,
+	const FVector& /*WorldLocation*/, int32 /*Damage*/, bool /*bCounterHit*/);
+
 UCLASS()
 class NIGHTSKYENGINE_API ABattleObject : public APawn
 {
@@ -647,6 +653,11 @@ class NIGHTSKYENGINE_API ABattleObject : public APawn
 public:
 	// Sets default values for this pawn's properties
 	ABattleObject();
+
+	/** Madrone change: see FOnNightSkyHitLanded (WitchToolsBattle draws blood with it). */
+	static FOnNightSkyHitLanded OnHitLanded;
+	/** Madrone change: world position of a PosType (as CreateCommonParticle places effects). */
+	FVector PosTypeToWorld(EPosType Type) const;
 
 	//Starting from this until ObjSyncEnd, everything is saved/loaded for rollback.
 	uint32 ObjSync = 0;
